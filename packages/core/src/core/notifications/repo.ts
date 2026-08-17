@@ -98,9 +98,9 @@ export function upsertPendingAction(
 
   const wasResolved = existing.resolved_at !== null;
   db.prepare(
-    `UPDATE pending_actions SET title = ?, message = ?, severity = ?, updated_at = ?, resolved_at = NULL, resolved_by = NULL
+    `UPDATE pending_actions SET kind = ?, title = ?, message = ?, severity = ?, action_kind = ?, updated_at = ?, resolved_at = NULL, resolved_by = NULL
      WHERE dedupe_key = ?`
-  ).run(input.title, input.message, input.severity, now, input.dedupeKey);
+  ).run(input.kind, input.title, input.message, input.severity, input.actionKind ?? null, now, input.dedupeKey);
   const updated = db.prepare("SELECT * FROM pending_actions WHERE dedupe_key = ?").get(input.dedupeKey) as unknown as PendingActionRow;
   return { action: toAction(updated), isNewOrReopened: wasResolved };
 }
