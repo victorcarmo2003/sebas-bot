@@ -7,7 +7,9 @@ import type { HostToWorkerMessage, WorkerRunnerData, WorkerToHostMessage } from 
 import type {
   SebasControllerRequest,
   SebasControllerResponse,
-  SebasModuleDiscordCommandDefinition
+  SebasModuleDiscordCommandDefinition,
+  SebasToolCallResult,
+  SebasToolDefinition
 } from "./types.js";
 
 // tsx propaga o loader de .ts pra worker_threads no mesmo processo, entao em dev isso resolve
@@ -75,6 +77,10 @@ export class ModuleHost {
     return this.running.has(moduleId);
   }
 
+  listRunningModuleIds(): string[] {
+    return [...this.running.keys()];
+  }
+
   async runSelfTest(moduleId: string): Promise<void> {
     await this.call(moduleId, { type: "invoke-selftest", callId: randomUUID() });
   }
@@ -95,6 +101,14 @@ export class ModuleHost {
 
   async listDiscordCommands(moduleId: string): Promise<SebasModuleDiscordCommandDefinition[]> {
     return (await this.call(moduleId, { type: "list-discord-commands", callId: randomUUID() })) as SebasModuleDiscordCommandDefinition[];
+  }
+
+  async listTools(moduleId: string): Promise<SebasToolDefinition[]> {
+    return (await this.call(moduleId, { type: "list-tools", callId: randomUUID() })) as SebasToolDefinition[];
+  }
+
+  async callTool(moduleId: string, toolName: string, args: Record<string, unknown>): Promise<SebasToolCallResult> {
+    return (await this.call(moduleId, { type: "invoke-tool", callId: randomUUID(), toolName, args })) as SebasToolCallResult;
   }
 
   private call(moduleId: string, message: Extract<HostToWorkerMessage, { type: string }>): Promise<unknown> {

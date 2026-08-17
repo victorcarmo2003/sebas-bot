@@ -10,6 +10,7 @@ export interface WorkerRunnerData {
     controller?: string;
     chronos?: string;
     discordCommands?: string;
+    tools?: string;
   };
 }
 
@@ -19,6 +20,8 @@ export type HostToWorkerMessage =
   | { type: "invoke-chronos"; callId: string }
   | { type: "invoke-discord-command"; callId: string; commandName: string; interaction: unknown }
   | { type: "list-discord-commands"; callId: string }
+  | { type: "invoke-tool"; callId: string; toolName: string; args: Record<string, unknown> }
+  | { type: "list-tools"; callId: string }
   | { type: "ctx-reply"; callId: string; ok: true; result: unknown }
   | { type: "ctx-reply"; callId: string; ok: false; error: string };
 

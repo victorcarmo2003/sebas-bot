@@ -1,3 +1,4 @@
+import { buildMessages, buildToolsParam, parseToolCalls } from "./openai-compat.js";
 import type { AiChatRequest, AiChatResult, OpenCodeModel } from "./types.js";
 
 const OPENCODE_BASE_URL = "https://opencode.ai/zen/v1";
@@ -45,16 +46,17 @@ export async function testOpenCodeKey(apiKey: string): Promise<{ ok: boolean; er
 }
 
 export async function runOpenCodeChat(apiKey: string, model: string, request: AiChatRequest): Promise<AiChatResult> {
-  const messages = [
-    ...(request.systemPrompt ? [{ role: "system", content: request.systemPrompt }] : []),
-    { role: "user", content: request.userPrompt }
-  ];
   const body: Record<string, unknown> = {
     model,
-    messages,
+    messages: buildMessages(request),
     temperature: request.temperature ?? 0.2,
     max_tokens: request.maxOutputTokens ?? 1500
   };
+  const tools = buildToolsParam(request);
+  if (tools) {
+    body.tools = tools;
+    body.tool_choice = "auto";
+  }
   if (request.jsonSchema) {
     body.response_format = {
       type: "json_schema",
@@ -79,8 +81,16 @@ export async function runOpenCodeChat(apiKey: string, model: string, request: Ai
       const text = await response.text().catch(() => "");
       return { ok: false, error: `OpenCode Zen failed with ${response.status}: ${text.slice(0, 400)}`, providerId: "opencode" };
     }
-    const data = (await response.json()) as { choices?: Array<{ message?: { content?: unknown } }> };
-    const content = data.choices?.[0]?.message?.content;
+    const data = (await response.json()) as {
+      choices?: Array<{ message?: { content?: unknown; tool_calls?: Array<{ id?: unknown; function?: { name?: unknown; arguments?: unknown } }> } }>;
+    };
+    const message = data.choices?.[0]?.message;
+    const toolCalls = message ? parseToolCalls(message) : undefined;
+    if (toolCalls) {
+      return { ok: true, toolCalls, providerId: "opencode" };
+    }
+
+    const content = message?.content;
     if (typeof content !== "string") {
       return { ok: false, error: "OpenCode Zen returned an unexpected response shape.", providerId: "opencode" };
     }

@@ -124,12 +124,14 @@ export function resolveEntryPoints(moduleDir: string, manifest: SebasModuleManif
   controller?: string;
   chronos?: string;
   discordCommands?: string;
+  tools?: string;
 } {
   const toAbsolute = (relative: string | undefined) => (relative ? resolve(moduleDir, relative) : undefined);
   return {
     controller: toAbsolute(manifest.entryPoints.controller),
     chronos: toAbsolute(manifest.entryPoints.chronos),
-    discordCommands: toAbsolute(manifest.entryPoints.discordCommands)
+    discordCommands: toAbsolute(manifest.entryPoints.discordCommands),
+    tools: toAbsolute(manifest.entryPoints.tools)
   };
 }
 

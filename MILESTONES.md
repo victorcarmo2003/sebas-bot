@@ -59,3 +59,20 @@ Só é relevante se/quando este monorepo for reimplantado por cima do `sebas.db`
 - [ ] Checar `journalctl -u sebas-worker` na VM pra entender por que caiu
 - [ ] Substituir o fluxo manual (`deploy-tmp/*.tar.gz`) por deploy a partir deste repo git
 - [ ] Rodar M7 antes de trocar o processo em produção
+
+## M9 — Tool calling + MCP + Skills (concluído em 2026-08-17)
+
+Motivação: usuário quer um "mordomo" capaz no Discord (comando + listagem de tools + interação), e está treinando em paralelo um Qwen2.5 fine-tunado como fallback caso a OpenCode Zen feche o tier free — esse fine-tune é treinado pra chamar tools do mesmo jeito que o provider principal, então o formato que nasce aqui é a referência. Plano completo (agora sobrescrito no arquivo de plano, mas resumido aqui): `SebasTool` contract + registry central + tool calling real na IA + skills + MCP dos dois lados + comando `/sebas` no Discord.
+
+- [x] `SebasTool`/`SebasModuleTools` em `src/core/modules/types.ts` — mesmo molde de `discordCommands` (entrypoint `tools`, capability `"tools"`), com `list-tools`/`invoke-tool` no protocolo host↔worker (`worker-protocol.ts`, `runner.ts`, `host.ts`)
+- [x] `src/core/tools/registry.ts` — agrega tools de módulos/skills/MCP sob nomes qualificados (`module:<id>:<tool>`, `skill:<tool>`, `mcp:<serverId>:<tool>`)
+- [x] Tool calling real OpenAI-compatible: `ai/types.ts` (`messages`/`tools`/`toolCalls`), `ai/openai-compat.ts` (monta `tools`/`tool_choice`, parseia `tool_calls`), `opencode-client.ts`/`openai-client.ts` atualizados, `ai/agent-loop.ts` (loop multi-turno modelo↔tool)
+- [x] `src/core/tools/skills.ts` — `list_skills`/`load_skill` lendo `packages/core/skills/*.md` (frontmatter), primeira skill: `sebas-persona.md`
+- [x] MCP dos dois lados (`@modelcontextprotocol/sdk`): `src/core/mcp/client.ts` (conecta servidores externos via stdio/HTTP, migration `0005_mcp_servers.sql`, rotas `GET/POST/DELETE /api/admin/mcp/servers`) e `src/core/mcp/server.ts` (expõe o registry como servidor MCP, `http.Server` próprio na porta `MCP_PORT`, separado do Hono do bot por causa de como a SDK espera `IncomingMessage`/`ServerResponse` crus)
+- [x] Comando `/sebas` (`bin/bot.ts`, não é módulo) — resposta deferida, roda `agent-loop` com o registry cheio, `register-discord-commands.mjs` atualizado pra registrar ele junto dos comandos do módulo in-tree
+
+**Testado ponta a ponta, sem mock**: `agent-loop` com provider fake (ciclo completo tool-call → resultado → resposta final); `skills.ts` lendo arquivo de verdade; `/api/admin/tools` via HTTP real; servidor MCP batendo com um `Client` de verdade da própria SDK (`tools/list` + `tools/call`); cliente MCP conectando via `stdio` a um mini-servidor MCP real (processo separado); comando `/sebas` via `POST /interactions` com assinatura ed25519 gerada de verdade (`tweetnacl`) — confirmado: verifica assinatura, reconhece o comando, responde deferido, tenta o PATCH final no Discord (rejeitado só por token de teste ser fake).
+
+**Risco conhecido, não resolvido**: `mcp/client.ts` com transporte `stdio` spawna processo arbitrário com privilégio do host — mesma categoria de risco do build de módulo em `installer.ts` (M5), documentado, não isolado.
+
+**Fora deste milestone, de propósito**: Discord Gateway (WebSocket) pra conversa passiva (menção/DM sem slash command) — precisa de processo persistente, reconexão, intent privilegiado `MESSAGE_CONTENT` aprovado no Discord Developer Portal. Por enquanto a interação com o mordomo é só via `/sebas`.

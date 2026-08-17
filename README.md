@@ -23,7 +23,20 @@ npm run dev:worker --workspace=@sebas-bot/core              # bin/worker.ts, cro
 npm run dev --workspace=@sebas-bot/panel                   # painel Next.js
 ```
 
-`packages/core` precisa de `.env` com `DISCORD_BOT_TOKEN`, `DISCORD_PUBLIC_KEY`, `DISCORD_APPLICATION_ID`, `OWNER_DISCORD_ID`, `ADMIN_API_SECRET` — não versionado, não existe `.env.example` ainda (todo).
+`packages/core` precisa de `.env` com `DISCORD_BOT_TOKEN`, `DISCORD_PUBLIC_KEY`, `DISCORD_APPLICATION_ID`, `OWNER_DISCORD_ID`, `ADMIN_API_SECRET` — não versionado, não existe `.env.example` ainda (todo). `BOT_PORT` (padrão 8080) e `MCP_PORT` (padrão 8090) são opcionais.
+
+## Tool calling, MCP e Skills
+
+Sebas tem um "mordomo" que conversa via `/sebas` no Discord, usando tool calling real (formato OpenAI-compatible — mesmo que OpenCode Zen/DeepSeek falam) contra um registry central de tools:
+
+- `packages/core/src/core/tools/registry.ts` — agrega tools de módulos (`module:<id>:<tool>`), skills (`skill:<tool>`) e servidores MCP externos (`mcp:<serverId>:<tool>`) sob nomes únicos.
+- `packages/core/src/core/ai/agent-loop.ts` — loop multi-turno: chama a IA com as tools do registry, executa as que ela pedir, devolve o resultado, repete até resposta final.
+- `packages/core/src/core/tools/skills.ts` + `packages/core/skills/*.md` — pacotes de instrução carregados sob demanda (`list_skills`/`load_skill`), igual Claude Skills.
+- `packages/core/src/core/mcp/` — Sebas é cliente E servidor MCP: `client.ts` conecta em servidores MCP externos (stdio/HTTP, configurados em `mcp_servers`, rotas `/api/admin/mcp/servers`) como fonte extra de tools; `server.ts` expõe as tools do registry num servidor MCP próprio (porta `MCP_PORT`, `http.Server` separado do Hono do bot — a SDK do MCP quer `IncomingMessage`/`ServerResponse` crus).
+
+Módulos ganham tools declarando um entrypoint `tools` no manifest, mesmo molde de `discordCommands` — ver `SebasModuleTools` em `packages/core/src/core/modules/types.ts`.
+
+Fora de escopo por enquanto: conversa passiva no Discord (menção/DM) exige Gateway (WebSocket), que o core não tem — só o webhook HTTP de `/interactions`. Ver M9 em `MILESTONES.md`.
 
 ## Arquitetura do module host
 

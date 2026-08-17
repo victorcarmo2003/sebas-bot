@@ -4,13 +4,20 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import nacl from "tweetnacl";
 import { createAdminApiRouter } from "../src/core/admin-api/router.js";
+import { runAgentLoop } from "../src/core/ai/agent-loop.js";
+import { resolveActiveAiProvider } from "../src/core/ai/registry.js";
 import { loadCoreConfig } from "../src/core/config/env.js";
 import { openDb } from "../src/core/db/client.js";
 import { runMigrations } from "../src/core/db/migrate.js";
-import { ModuleHost } from "../src/core/modules/host.js";
+import { editDiscordInteractionOriginalResponse } from "../src/core/discord/client.js";
+import { McpClientManager, listMcpServers } from "../src/core/mcp/client.js";
+import { startMcpServer } from "../src/core/mcp/server.js";
 import { grantedPermissionsForInTreeModule } from "../src/core/modules/grants.js";
+import { ModuleHost } from "../src/core/modules/host.js";
 import { resolveEntryPoints } from "../src/core/modules/installer.js";
 import type { SebasModuleManifest } from "../src/core/modules/types.js";
+import { moduleToolProviders, ToolRegistry } from "../src/core/tools/registry.js";
+import { skillsToolProvider } from "../src/core/tools/skills.js";
 
 const config = loadCoreConfig();
 runMigrations(config.dbPath);
@@ -33,17 +40,47 @@ host.start({
   granted: grantedPermissionsForInTreeModule(inTreeManifest)
 });
 
+const mcpClientManager = new McpClientManager();
+for (const server of listMcpServers(db)) {
+  if (!server.enabled) continue;
+  mcpClientManager.connect(server).catch((error) => {
+    console.error(`Failed to connect to MCP server "${server.id}" at startup:`, error);
+  });
+}
+
+const toolRegistry = new ToolRegistry(() => [
+  ...moduleToolProviders(host),
+  skillsToolProvider,
+  ...mcpClientManager.connectedServerIds().map((id) => mcpClientManager.toolProvider(id))
+]);
+
+startMcpServer(toolRegistry, config.mcpPort);
+
 const INTERACTION_PING = 1;
 const INTERACTION_APPLICATION_COMMAND = 2;
 const RESPONSE_PONG = 1;
 const RESPONSE_DEFERRED_CHANNEL_MESSAGE = 5;
 const MESSAGE_FLAG_EPHEMERAL = 1 << 6;
 
+// Comando do proprio core (nao de um modulo): conversa com o Sebas usando o agent-loop de
+// tool-calling contra o toolRegistry cheio (modulos + skills + MCP externo).
+const CORE_CHAT_COMMAND_NAME = "sebas";
+
 const app = new Hono();
 
 app.get("/health", (c) => c.json({ ok: true, service: "sebas-bot" }));
 
-app.route("/api/admin", createAdminApiRouter({ db, config, host, dataDir: dirname(config.dbPath), inTreeModuleId }));
+app.route(
+  "/api/admin",
+  createAdminApiRouter({ db, config, host, dataDir: dirname(config.dbPath), inTreeModuleId, toolRegistry, mcpClientManager })
+);
+
+interface DiscordInteraction {
+  type: number;
+  data?: { name?: string; options?: Array<{ name: string; type: number; value?: string }> };
+  application_id: string;
+  token: string;
+}
 
 app.post("/interactions", async (c) => {
   const body = await c.req.text();
@@ -54,12 +91,7 @@ app.post("/interactions", async (c) => {
     return c.text("invalid request signature", 401);
   }
 
-  let interaction: {
-    type: number;
-    data?: { name?: string };
-    application_id: string;
-    token: string;
-  };
+  let interaction: DiscordInteraction;
   try {
     interaction = JSON.parse(body);
   } catch {
@@ -74,6 +106,14 @@ app.post("/interactions", async (c) => {
   }
 
   const commandName = interaction.data?.name;
+
+  if (commandName === CORE_CHAT_COMMAND_NAME) {
+    void handleSebasChatCommand(interaction).catch((error) => {
+      console.error(`"${CORE_CHAT_COMMAND_NAME}" command failed:`, error);
+    });
+    return c.json({ type: RESPONSE_DEFERRED_CHANNEL_MESSAGE, data: { flags: MESSAGE_FLAG_EPHEMERAL } });
+  }
+
   const knownCommands = await host.listDiscordCommands(inTreeModuleId).catch(() => []);
   if (!commandName || !knownCommands.some((definition) => definition.name === commandName)) {
     return c.json({ type: 4, data: { content: "Comando desconhecido.", flags: MESSAGE_FLAG_EPHEMERAL } });
@@ -86,6 +126,26 @@ app.post("/interactions", async (c) => {
   });
   return c.json({ type: RESPONSE_DEFERRED_CHANNEL_MESSAGE, data: { flags: MESSAGE_FLAG_EPHEMERAL } });
 });
+
+async function handleSebasChatCommand(interaction: DiscordInteraction): Promise<void> {
+  const userMessage = interaction.data?.options?.find((option) => option.name === "mensagem")?.value ?? "";
+  const provider = resolveActiveAiProvider(db);
+  if (!provider) {
+    await editDiscordInteractionOriginalResponse(
+      config.discordApplicationId,
+      interaction.token,
+      "Ainda não tenho um provedor de IA configurado. Configure no painel primeiro."
+    );
+    return;
+  }
+
+  const persona = await skillsToolProvider.callTool("load_skill", { name: "sebas-persona" });
+  const systemPrompt = persona.ok ? (persona.result as { content: string }).content : undefined;
+
+  const result = await runAgentLoop(provider, toolRegistry, { systemPrompt, userPrompt: userMessage });
+  const reply = result.ok ? result.text || "Não tenho uma resposta pra isso." : `Não consegui responder: ${result.error}`;
+  await editDiscordInteractionOriginalResponse(config.discordApplicationId, interaction.token, reply.slice(0, 1900));
+}
 
 function verifySignature(signature: string | undefined, timestamp: string | undefined, body: string, publicKey: string): boolean {
   if (!signature || !timestamp) return false;

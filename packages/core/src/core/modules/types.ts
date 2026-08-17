@@ -118,6 +118,26 @@ export interface SebasModuleDiscordCommands {
   handleCommand(ctx: SebasModuleContext, commandName: string, interaction: unknown): Promise<{ content: string } | void>;
 }
 
+/** Definicao de tool no formato de function-calling OpenAI-compatible (o que OpenCode Zen/DeepSeek
+ * e o fine-tune do Qwen tambem falam) — mesmo schema que vai dentro de `tools` no request de chat. */
+export interface SebasToolDefinition {
+  name: string;
+  description: string;
+  /** JSON Schema de objeto (campo "parameters" do function-calling). */
+  parameters: Record<string, unknown>;
+}
+
+export interface SebasToolCallResult {
+  ok: boolean;
+  result?: unknown;
+  error?: string;
+}
+
+export interface SebasModuleTools {
+  tools: SebasToolDefinition[];
+  callTool(ctx: SebasModuleContext, name: string, args: Record<string, unknown>): Promise<SebasToolCallResult>;
+}
+
 /** Permissoes declaradas no manifest (sebas.module.json) — o que o modulo PODE pedir. */
 export interface ModulePermissions {
   adminScopes?: string[];
@@ -127,7 +147,7 @@ export interface ModulePermissions {
   discordPermissions?: string[];
 }
 
-export type ModuleCapability = "controller" | "cron" | "ui" | "discordCommands" | "aiProvider" | "storage" | "webhook";
+export type ModuleCapability = "controller" | "cron" | "ui" | "discordCommands" | "tools" | "aiProvider" | "storage" | "webhook";
 
 export interface SebasModuleManifest {
   schemaVersion: 1;

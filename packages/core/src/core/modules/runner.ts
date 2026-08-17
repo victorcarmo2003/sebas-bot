@@ -9,7 +9,8 @@ import type {
   SebasControllerRequest,
   SebasModuleChronos,
   SebasModuleController,
-  SebasModuleDiscordCommands
+  SebasModuleDiscordCommands,
+  SebasModuleTools
 } from "./types.js";
 
 if (!parentPort) {
@@ -30,6 +31,7 @@ async function loadDefault<T>(path: string | undefined): Promise<T | null> {
 const controllerPromise = loadDefault<SebasModuleController>(data.entryPoints.controller);
 const chronosPromise = loadDefault<SebasModuleChronos>(data.entryPoints.chronos);
 const discordCommandsPromise = loadDefault<SebasModuleDiscordCommands>(data.entryPoints.discordCommands);
+const toolsPromise = loadDefault<SebasModuleTools>(data.entryPoints.tools);
 
 function reply(callId: string, ok: true, result: unknown): void;
 function reply(callId: string, ok: false, error: string): void;
@@ -83,6 +85,18 @@ async function handleMessage(message: HostToWorkerMessage): Promise<void> {
       case "list-discord-commands": {
         const discordCommands = await discordCommandsPromise;
         reply(message.callId, true, discordCommands?.commands ?? []);
+        return;
+      }
+      case "invoke-tool": {
+        const tools = await toolsPromise;
+        if (!tools) throw new Error("Module has no tools entrypoint.");
+        const result = await tools.callTool(ctx, message.toolName, message.args);
+        reply(message.callId, true, result);
+        return;
+      }
+      case "list-tools": {
+        const tools = await toolsPromise;
+        reply(message.callId, true, tools?.tools ?? []);
         return;
       }
     }

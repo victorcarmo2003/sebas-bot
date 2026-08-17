@@ -12,6 +12,8 @@ import { approveModule, disableModule, enableModule, rejectModule, uninstallModu
 import { getModuleInstall, listModuleInstalls, toModuleDetail } from "../modules/marketplace-repo.js";
 import { diffAgainstGrantedItems, grantsRequestedByManifest, loadActiveGrantItems } from "../modules/grants.js";
 import type { SebasControllerRequest } from "../modules/types.js";
+import { createMcpServer, deleteMcpServer, listMcpServers, type McpClientManager } from "../mcp/client.js";
+import type { ToolRegistry } from "../tools/registry.js";
 import { ALL_SCOPES, hasScope, resolveAdmin, type Admin, type PermissionScope } from "./rbac.js";
 import { deleteSubadmin, listAdmins, listModuleRows, listRunLogs, upsertSubadmin } from "./repo.js";
 
@@ -23,6 +25,8 @@ export interface AdminApiDeps {
   /** Modulo in-tree cujo controller e' montado direto na raiz da admin API (paridade com o
    * comportamento atual: /guilds, /settings, /history sem prefixo de moduleId). */
   inTreeModuleId: string;
+  toolRegistry: ToolRegistry;
+  mcpClientManager: McpClientManager;
 }
 
 type Env = { Variables: { admin: Admin } };
@@ -58,6 +62,8 @@ export function createAdminApiRouter(deps: AdminApiDeps): Hono<Env> {
   registerModulesRoutes(app, deps);
   registerNotificationsRoutes(app, deps);
   registerAiRoutes(app, deps);
+  registerToolsRoutes(app, deps);
+  registerMcpRoutes(app, deps);
   registerInTreeControllerFallback(app, deps);
 
   return app;
@@ -283,6 +289,62 @@ function registerAiRoutes(app: Hono<Env>, deps: AdminApiDeps): void {
     selectAiProviderModel(deps.db, "opencode", body.model);
     await runAiHealthCheck(deps.db, deps.config);
     return c.json({ ok: true, model: body.model });
+  });
+}
+
+function registerToolsRoutes(app: Hono<Env>, deps: AdminApiDeps): void {
+  app.get("/tools", async (c) => {
+    const denied = requireScope(c.get("admin"), "modules:manage");
+    if (denied) return denied;
+    const tools = await deps.toolRegistry.listQualifiedTools();
+    return c.json({ items: tools });
+  });
+}
+
+function registerMcpRoutes(app: Hono<Env>, deps: AdminApiDeps): void {
+  app.get("/mcp/servers", (c) => {
+    const denied = requireScope(c.get("admin"), "modules:manage");
+    if (denied) return denied;
+    return c.json({ items: listMcpServers(deps.db) });
+  });
+
+  app.post("/mcp/servers", async (c) => {
+    const denied = requireScope(c.get("admin"), "modules:manage");
+    if (denied) return denied;
+    const body = await c.req.json();
+    if (!body.id || !body.name || !body.transport) {
+      return c.json({ error: "id, name and transport are required" }, 400);
+    }
+    if (body.transport !== "stdio" && body.transport !== "http") {
+      return c.json({ error: "transport must be 'stdio' or 'http'" }, 400);
+    }
+    createMcpServer(deps.db, {
+      id: body.id,
+      name: body.name,
+      transport: body.transport,
+      command: body.command,
+      args: Array.isArray(body.args) ? body.args : undefined,
+      url: body.url,
+      env: typeof body.env === "object" && body.env !== null ? body.env : undefined
+    });
+    const created = listMcpServers(deps.db).find((server) => server.id === body.id);
+    if (created) {
+      try {
+        await deps.mcpClientManager.connect(created);
+      } catch (error) {
+        return c.json({ ok: true, connected: false, error: error instanceof Error ? error.message : String(error) }, 201);
+      }
+    }
+    return c.json({ ok: true, connected: true }, 201);
+  });
+
+  app.delete("/mcp/servers/:id", async (c) => {
+    const denied = requireScope(c.get("admin"), "modules:manage");
+    if (denied) return denied;
+    const id = c.req.param("id");
+    await deps.mcpClientManager.disconnect(id);
+    deleteMcpServer(deps.db, id);
+    return c.json({ deleted: true });
   });
 }
 

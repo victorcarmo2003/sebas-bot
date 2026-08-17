@@ -6,6 +6,7 @@ export interface CoreConfig {
   discordApplicationId: string;
   dbPath: string;
   botPort: number;
+  mcpPort: number;
   ownerDiscordId: string;
   panelUrl: string;
 }
@@ -25,6 +26,7 @@ export function loadCoreConfig(): CoreConfig {
     discordApplicationId: required("DISCORD_APPLICATION_ID"),
     dbPath: process.env.DB_PATH || "data/sebas.db",
     botPort: Number.parseInt(process.env.BOT_PORT || "8080", 10),
+    mcpPort: Number.parseInt(process.env.MCP_PORT || "8090", 10),
     ownerDiscordId: required("OWNER_DISCORD_ID"),
     panelUrl: process.env.PANEL_URL || "http://127.0.0.1:3000"
   };
