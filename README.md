@@ -1,0 +1,42 @@
+# sebas-bot
+
+Monorepo do Sebas — core, painel e módulos, reconstruído em 2026-08-16/17 a partir do que rodava em produção sem nenhum código-fonte versionado (ver `MILESTONES.md` pro histórico completo da investigação e da reescrita, e `C:\Users\hakor\.claude\plans\harmonic-frolicking-map.md` pro plano de arquitetura aprovado).
+
+## O que é o Sebas
+
+Plataforma de bot Discord modular, em 3 partes, todas neste repo (npm workspaces):
+
+1. **`packages/core`** (`@sebas-bot/core`) — processo Node/TypeScript que recebe interactions do Discord, expõe a admin API e roda os módulos. Dois entrypoints: `bin/bot.ts` (webhook + API) e `bin/worker.ts` (cron + fila).
+2. **`packages/panel`** (`@sebas-bot/panel`) — Next.js, dashboard que administra guilds, módulos, histórico, logs e sub-admins, falando com o core via API REST (`SEBAS_CORE_API_URL` + secret Bearer).
+3. **`packages/modules/changelog-roblox`** (`@sebas-bot/module-changelog-roblox`) — módulo in-tree, monitora changelog do Roblox via RSS e posta no Discord. Roda sandboxado numa `worker_threads` própria, contra o contrato `SebasModuleContext` (ver `packages/core/src/core/modules/`).
+
+Módulos de terceiros não vivem neste repo — são instalados dinamicamente via `POST /api/admin/modules/install` (clone do repo, build, self-test em sandbox, aprovação de permissões pelo dono). Ver `packages/core/src/core/modules/installer.ts`.
+
+## Rodando localmente
+
+```
+npm install                                              # na raiz, resolve os 3 workspaces
+npm run build --workspace=@sebas-bot/module-changelog-roblox   # builda o modulo antes do core (o core carrega o dist/ dele)
+npm run migrate --workspace=@sebas-bot/core               # aplica migrations num data/sebas.db novo
+npm run dev:bot --workspace=@sebas-bot/core                # bin/bot.ts, precisa de .env (ver .env.example)
+npm run dev:worker --workspace=@sebas-bot/core              # bin/worker.ts, cron + fila
+npm run dev --workspace=@sebas-bot/panel                   # painel Next.js
+```
+
+`packages/core` precisa de `.env` com `DISCORD_BOT_TOKEN`, `DISCORD_PUBLIC_KEY`, `DISCORD_APPLICATION_ID`, `OWNER_DISCORD_ID`, `ADMIN_API_SECRET` — não versionado, não existe `.env.example` ainda (todo).
+
+## Arquitetura do module host
+
+Cada módulo (in-tree ou instalado via marketplace) roda isolado numa `worker_threads`. O `SebasModuleContext` que o módulo vê (`ctx.sql`, `ctx.storage`, `ctx.fetch`, `ctx.discord`, `ctx.ai`) é implementado como RPC de volta pro processo principal (`context-bridge.ts`), que é quem de fato toca o SQLite/rede/Discord e valida cada chamada contra as permissões concedidas ao módulo (`module_grants`). Ver `packages/core/src/core/modules/`:
+
+- `host.ts` — spawn/lifecycle das workers, roteamento de entrypoint
+- `context-bridge.ts` — implementação real do contexto, enforcement de permissão
+- `runner.ts` / `context-in-worker.ts` — o lado de dentro da worker
+- `installer.ts` / `lifecycle.ts` — ciclo de instalação dinâmica (clone → build → self-test → approve → enable)
+
+## Onde roda em produção (referência — deploy ainda não foi refeito com este repo)
+
+- **VM:** `163.176.111.187` (hostname interno `instance-20260804-2203`), usuário SSH `hakor`. Domínio público `163-176-111-187.sslip.io` (Caddy).
+- Atenção: existe outra VM do usuário em `147.15.47.157` (`minecraft---caverna`) — servidor de Minecraft, **não** tem nada do Sebas.
+- Estado levantado em 2026-08-16: roda só como `dist/` compilado (sem fonte, sem `.git`) em `/opt/sebas/bot` + `/opt/sebas/panel`, via systemd (`sebas-bot`, `sebas-worker`, `sebas-panel`). `sebas-worker` estava **inativo**. Detalhes completos, incluindo schema do banco de produção, em `MILESTONES.md` M1–M4.
+- Esse processo em produção roda o contrato de módulo **antigo** (import estático, `db` cru, sem sandbox) — mais simples e mais antigo que o que este repo implementa agora. Redeploy fica pra M8 em `MILESTONES.md`, e precisa da migração de dados de M7 antes.

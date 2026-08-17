@@ -1,0 +1,27 @@
+[Unit]
+Description=Sebas bot - Discord webhook + admin API
+After=network.target
+
+[Service]
+Type=simple
+User=sebas
+WorkingDirectory=/opt/sebas/bot
+EnvironmentFile=/opt/sebas/bot/.env
+ExecStart=/usr/bin/node dist/bin/bot.js
+Restart=always
+RestartSec=1
+StartLimitIntervalSec=0
+
+# Falha rapido em vez de degradar em swap: um processo latency-critical que trava
+# e melhor morto e reiniciado em ~1s do que lento por minutos.
+MemoryMax=150M
+OOMScoreAdjust=-500
+
+# Isolamento minimo, sem tocar no resto do sistema.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/sebas/bot/data
+
+[Install]
+WantedBy=multi-user.target

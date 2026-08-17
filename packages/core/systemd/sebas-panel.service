@@ -1,0 +1,22 @@
+[Unit]
+Description=Sebas panel - Next.js admin dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=sebas
+WorkingDirectory=/opt/sebas/panel
+EnvironmentFile=/opt/sebas/panel/.env
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=2
+StartLimitIntervalSec=0
+
+MemoryMax=250M
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,24 @@
+# Troque <host> pelo hostname sslip.io real (ex: 203-0-113-10.sslip.io) antes de copiar pra VM.
+<host> {
+	encode gzip
+
+	# Discord Interactions Endpoint URL = https://<host>/interactions
+	handle /interactions {
+		reverse_proxy 127.0.0.1:8080 {
+			transport http {
+				response_header_timeout 5s
+			}
+		}
+	}
+
+	handle /health {
+		reverse_proxy 127.0.0.1:8080
+	}
+
+	# Admin API do sebas-bot fica so em loopback: o painel (mesma VM) fala com ela
+	# direto por 127.0.0.1, nunca exposta aqui.
+
+	handle {
+		reverse_proxy 127.0.0.1:3000
+	}
+}

@@ -1,0 +1,31 @@
+{
+  "name": "@sebas-bot/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "check": "tsc --noEmit",
+    "commands:register": "node scripts/register-discord-commands.mjs",
+    "migrate": "tsx src/core/db/migrate.ts",
+    "dev:bot": "tsx watch bin/bot.ts",
+    "dev:worker": "tsx watch bin/worker.ts",
+    "start:bot": "node dist/bin/bot.js",
+    "start:worker": "node dist/bin/worker.js"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "croner": "^9.0.0",
+    "dotenv": "^17.4.2",
+    "hono": "^4.6.14",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}

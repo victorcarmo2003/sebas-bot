@@ -1,0 +1,336 @@
+import { Hono } from "hono";
+import type { DatabaseSync } from "node:sqlite";
+import type { CoreConfig } from "../config/env.js";
+import { listOpenCodeModels, testOpenCodeKey } from "../ai/opencode-client.js";
+import { getAiProviderSettings, saveAiProviderKey, selectAiProviderModel } from "../ai/settings-repo.js";
+import { runAiHealthCheck } from "../notifications/health-check.js";
+import { listPendingActions, resolvePendingActionById } from "../notifications/repo.js";
+import { discoverModules } from "../modules/discover.js";
+import type { ModuleHost } from "../modules/host.js";
+import { installModule } from "../modules/installer.js";
+import { approveModule, disableModule, enableModule, rejectModule, uninstallModule } from "../modules/lifecycle.js";
+import { getModuleInstall, listModuleInstalls, toModuleDetail } from "../modules/marketplace-repo.js";
+import { diffAgainstGrantedItems, grantsRequestedByManifest, loadActiveGrantItems } from "../modules/grants.js";
+import type { SebasControllerRequest } from "../modules/types.js";
+import { ALL_SCOPES, hasScope, resolveAdmin, type Admin, type PermissionScope } from "./rbac.js";
+import { deleteSubadmin, listAdmins, listModuleRows, listRunLogs, upsertSubadmin } from "./repo.js";
+
+export interface AdminApiDeps {
+  db: DatabaseSync;
+  config: CoreConfig;
+  host: ModuleHost;
+  dataDir: string;
+  /** Modulo in-tree cujo controller e' montado direto na raiz da admin API (paridade com o
+   * comportamento atual: /guilds, /settings, /history sem prefixo de moduleId). */
+  inTreeModuleId: string;
+}
+
+type Env = { Variables: { admin: Admin } };
+
+export function createAdminApiRouter(deps: AdminApiDeps): Hono<Env> {
+  const app = new Hono<Env>();
+
+  app.use("*", async (c, next) => {
+    const auth = c.req.header("authorization");
+    const expected = `Bearer ${process.env.ADMIN_API_SECRET ?? ""}`;
+    if (!process.env.ADMIN_API_SECRET || auth !== expected) {
+      return c.json({ error: "unauthorized" }, 401);
+    }
+    const discordUserId = c.req.header("x-admin-discord-id");
+    if (!discordUserId) {
+      return c.json({ error: "missing X-Admin-Discord-Id header" }, 400);
+    }
+    const admin = resolveAdmin(deps.db, deps.config.ownerDiscordId, discordUserId);
+    if (!admin) {
+      return c.json({ error: "forbidden" }, 403);
+    }
+    c.set("admin", admin);
+    await next();
+  });
+
+  app.get("/whoami", (c) => {
+    const admin = c.get("admin");
+    return c.json({ discordUserId: admin.discordUserId, role: admin.role, permissions: admin.permissions });
+  });
+
+  registerAdminsRoutes(app, deps);
+  registerLogsRoutes(app, deps);
+  registerModulesRoutes(app, deps);
+  registerNotificationsRoutes(app, deps);
+  registerAiRoutes(app, deps);
+  registerInTreeControllerFallback(app, deps);
+
+  return app;
+}
+
+function requireScope(admin: Admin, scope: PermissionScope): Response | null {
+  if (!hasScope(admin, scope)) {
+    return Response.json({ error: `missing scope: ${scope}` }, { status: 403 });
+  }
+  return null;
+}
+
+function registerAdminsRoutes(app: Hono<Env>, deps: AdminApiDeps): void {
+  app.get("/admins", (c) => {
+    const denied = requireScope(c.get("admin"), "admins:manage");
+    if (denied) return denied;
+    return c.json({ items: listAdmins(deps.db) });
+  });
+
+  app.post("/admins", async (c) => {
+    const admin = c.get("admin");
+    const denied = requireScope(admin, "admins:manage");
+    if (denied) return denied;
+    const body = await c.req.json();
+    if (!body.discordUserId) {
+      return c.json({ error: "discordUserId is required" }, 400);
+    }
+    const permissions = sanitizePermissions(body.permissions);
+    upsertSubadmin(deps.db, {
+      discordUserId: body.discordUserId,
+      displayName: body.displayName,
+      permissions,
+      createdBy: admin.discordUserId
+    });
+    return c.json({ discordUserId: body.discordUserId, role: "subadmin", permissions }, 201);
+  });
+
+  app.patch("/admins/:id", async (c) => {
+    const admin = c.get("admin");
+    const denied = requireScope(admin, "admins:manage");
+    if (denied) return denied;
+    const targetId = c.req.param("id");
+    const body = await c.req.json();
+    const permissions = sanitizePermissions(body.permissions);
+    upsertSubadmin(deps.db, { discordUserId: targetId, displayName: body.displayName, permissions, createdBy: admin.discordUserId });
+    return c.json({ discordUserId: targetId, role: "subadmin", permissions });
+  });
+
+  app.delete("/admins/:id", (c) => {
+    const denied = requireScope(c.get("admin"), "admins:manage");
+    if (denied) return denied;
+    const targetId = c.req.param("id");
+    deleteSubadmin(deps.db, targetId);
+    return c.json({ discordUserId: targetId, deleted: true });
+  });
+}
+
+function registerLogsRoutes(app: Hono<Env>, deps: AdminApiDeps): void {
+  app.get("/logs", (c) => {
+    const denied = requireScope(c.get("admin"), "logs:view");
+    if (denied) return denied;
+    const cursor = c.req.query("cursor");
+    const page = listRunLogs(deps.db, {
+      level: c.req.query("level"),
+      context: c.req.query("context"),
+      cursor: cursor ? Number(cursor) : undefined,
+      limit: c.req.query("limit") ? Number(c.req.query("limit")) : undefined
+    });
+    return c.json(page);
+  });
+}
+
+function registerModulesRoutes(app: Hono<Env>, deps: AdminApiDeps): void {
+  app.get("/modules", (c) => {
+    const denied = requireScope(c.get("admin"), "modules:manage");
+    if (denied) return denied;
+    return c.json({ items: listModuleRows(deps.db) });
+  });
+
+  app.get("/modules/discover", async (c) => {
+    const denied = requireScope(c.get("admin"), "modules:manage");
+    if (denied) return denied;
+    const result = await discoverModules(deps.db, c.req.query("q") ?? "");
+    return c.json(result);
+  });
+
+  app.post("/modules/install", async (c) => {
+    const admin = c.get("admin");
+    const denied = requireScope(admin, "modules:manage");
+    if (denied) return denied;
+    const body = await c.req.json();
+    if (!body.repoUrl) {
+      return c.json({ ok: false, errors: ["repoUrl is required"] }, 400);
+    }
+    const result = await installModule(deps.db, deps.host, deps.dataDir, body.repoUrl, admin.discordUserId);
+    return c.json(result, result.ok ? 200 : 400);
+  });
+
+  app.get("/modules/:id", (c) => {
+    const denied = requireScope(c.get("admin"), "modules:manage");
+    if (denied) return denied;
+    const row = getModuleInstall(deps.db, c.req.param("id"));
+    if (!row) return c.json({ error: "not found" }, 404);
+    const detail = toModuleDetail(deps.db, row);
+    const alreadyGranted = loadActiveGrantItems(deps.db, detail.id);
+    detail.pendingPermissionDiff = diffAgainstGrantedItems(grantsRequestedByManifest(detail.manifest), alreadyGranted);
+    return c.json(detail);
+  });
+
+  app.delete("/modules/:id", async (c) => {
+    const admin = c.get("admin");
+    const denied = requireScope(admin, "modules:manage");
+    if (denied) return denied;
+    await uninstallModule(deps.db, deps.host, c.req.param("id"), admin.discordUserId);
+    return c.json({ deleted: true });
+  });
+
+  app.post("/modules/:id/approve", (c) => {
+    const admin = c.get("admin");
+    const denied = requireScope(admin, "modules:manage");
+    if (denied) return denied;
+    approveModule(deps.db, c.req.param("id"), admin.discordUserId);
+    return c.json({ ok: true });
+  });
+
+  app.post("/modules/:id/reject", (c) => {
+    const admin = c.get("admin");
+    const denied = requireScope(admin, "modules:manage");
+    if (denied) return denied;
+    rejectModule(deps.db, c.req.param("id"), admin.discordUserId);
+    return c.json({ ok: true });
+  });
+
+  app.post("/modules/:id/enable", (c) => {
+    const admin = c.get("admin");
+    const denied = requireScope(admin, "modules:manage");
+    if (denied) return denied;
+    enableModule(deps.db, deps.host, deps.dataDir, c.req.param("id"), admin.discordUserId);
+    return c.json({ ok: true });
+  });
+
+  app.post("/modules/:id/disable", (c) => {
+    const admin = c.get("admin");
+    const denied = requireScope(admin, "modules:manage");
+    if (denied) return denied;
+    disableModule(deps.db, deps.host, c.req.param("id"), admin.discordUserId);
+    return c.json({ ok: true });
+  });
+}
+
+function registerNotificationsRoutes(app: Hono<Env>, deps: AdminApiDeps): void {
+  app.get("/notifications", (c) => {
+    return c.json({ items: listPendingActions(deps.db) });
+  });
+
+  app.post("/notifications/:id/resolve", (c) => {
+    const admin = c.get("admin");
+    const id = Number(c.req.param("id"));
+    if (!Number.isFinite(id)) {
+      return c.json({ error: "invalid id" }, 400);
+    }
+    resolvePendingActionById(deps.db, id, admin.discordUserId);
+    return c.json({ id, resolved: true });
+  });
+}
+
+function registerAiRoutes(app: Hono<Env>, deps: AdminApiDeps): void {
+  app.get("/ai/status", (c) => {
+    const opencode = getAiProviderSettings(deps.db, "opencode");
+    return c.json({
+      opencode: opencode
+        ? {
+            providerId: opencode.providerId,
+            hasApiKey: Boolean(opencode.apiKey),
+            selectedModel: opencode.selectedModel,
+            status: opencode.status,
+            lastCheckedAt: opencode.lastCheckedAt,
+            lastError: opencode.lastError
+          }
+        : { providerId: "opencode", hasApiKey: false, status: "unconfigured", selectedModel: null }
+    });
+  });
+
+  app.post("/ai/opencode/key", async (c) => {
+    const admin = c.get("admin");
+    if (admin.role !== "owner") {
+      return c.json({ error: "only the owner can configure the AI provider" }, 403);
+    }
+    const body = await c.req.json();
+    if (!body.apiKey) {
+      return c.json({ error: "apiKey is required" }, 400);
+    }
+    const check = await testOpenCodeKey(body.apiKey);
+    if (!check.ok) {
+      return c.json({ error: check.error ?? "invalid API key" }, 400);
+    }
+    saveAiProviderKey(deps.db, "opencode", body.apiKey);
+    return c.json({ ok: true });
+  });
+
+  app.get("/ai/opencode/models", async (c) => {
+    const settings = getAiProviderSettings(deps.db, "opencode");
+    if (!settings?.apiKey) {
+      return c.json({ error: "no OpenCode API key configured yet" }, 400);
+    }
+    try {
+      const models = await listOpenCodeModels(settings.apiKey);
+      return c.json({ items: models.filter((model) => model.free) });
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
+    }
+  });
+
+  app.post("/ai/opencode/select", async (c) => {
+    const admin = c.get("admin");
+    if (admin.role !== "owner") {
+      return c.json({ error: "only the owner can configure the AI provider" }, 403);
+    }
+    const body = await c.req.json();
+    if (!body.model) {
+      return c.json({ error: "model is required" }, 400);
+    }
+    selectAiProviderModel(deps.db, "opencode", body.model);
+    await runAiHealthCheck(deps.db, deps.config);
+    return c.json({ ok: true, model: body.model });
+  });
+}
+
+/** Rotas do modulo in-tree (changelog-roblox: /guilds, /settings, /history, ...) sem prefixo de
+ * moduleId — preserva o contrato que o painel ja consome (worker-api.ts). Modulos instalados via
+ * marketplace nao passam por aqui; eles ainda nao tem uma superficie de admin API generica
+ * exposta ao painel (fica pra quando o primeiro modulo de terceiro precisar de uma). */
+function registerInTreeControllerFallback(app: Hono<Env>, deps: AdminApiDeps): void {
+  app.all("/*", async (c) => {
+    if (!deps.host.isRunning(deps.inTreeModuleId)) {
+      return c.json({ error: "not found" }, 404);
+    }
+    const url = new URL(c.req.url);
+    const query: Record<string, string> = {};
+    url.searchParams.forEach((value, key) => {
+      query[key] = value;
+    });
+    const headers: Record<string, string> = {};
+    c.req.raw.headers.forEach((value, key) => {
+      headers[key] = value;
+    });
+
+    let body: unknown = null;
+    if (c.req.method !== "GET" && c.req.method !== "HEAD") {
+      body = await c.req.json().catch(() => null);
+    }
+
+    const req: SebasControllerRequest = {
+      method: c.req.method,
+      path: url.pathname.replace(/^\/api\/admin/, ""),
+      query,
+      headers,
+      body
+    };
+
+    try {
+      const response = await deps.host.handleControllerRequest(deps.inTreeModuleId, req);
+      return new Response(JSON.stringify(response.body), {
+        status: response.status,
+        headers: { "content-type": "application/json" }
+      });
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
+    }
+  });
+}
+
+function sanitizePermissions(input: unknown): PermissionScope[] {
+  if (!Array.isArray(input)) return [];
+  return input.filter((value): value is PermissionScope => (ALL_SCOPES as readonly string[]).includes(value));
+}
