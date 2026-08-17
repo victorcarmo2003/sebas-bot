@@ -1,8 +1,10 @@
+import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { DatabaseSync } from "node:sqlite";
 import type { SebasToolCallResult, SebasToolDefinition } from "../modules/types.js";
+import { sandboxCommand } from "../security/sandbox.js";
 import type { ToolProvider } from "../tools/registry.js";
 
 export interface McpServerRow {
@@ -86,12 +88,15 @@ export function deleteMcpServer(db: DatabaseSync, id: string): void {
  * Gerencia conexoes com servidores MCP externos, configurados em `mcp_servers`. Cada servidor
  * vira um ToolProvider (namespace "mcp:<id>") pro ToolRegistry.
  *
- * Risco conhecido, igual ao build de modulo em installer.ts: transporte "stdio" spawna um
- * processo arbitrario com privilegio total do host — nao ha sandbox aqui, so quem tem acesso
- * a "modules:manage" pode cadastrar servidores MCP, e' preciso confiar no comando cadastrado.
+ * Transporte "stdio" spawna um processo — passa por sandboxCommand() igual installer.ts
+ * (bubblewrap quando disponivel, so a scratch dir do servidor fica gravavel). So dono
+ * ("owner", nao qualquer subadmin com "modules:manage" — ver admin-api/router.ts) pode
+ * cadastrar servidor MCP: mesmo sem bwrap, o comando so roda com quem ja tem confianca total.
  */
 export class McpClientManager {
   private readonly clients = new Map<string, Client>();
+
+  constructor(private readonly dataDir: string) {}
 
   async connect(config: McpServerRow): Promise<void> {
     if (this.clients.has(config.id)) {
@@ -100,10 +105,16 @@ export class McpClientManager {
     const client = new Client({ name: "sebas-bot", version: "0.1.0" });
     const transport =
       config.transport === "stdio"
-        ? new StdioClientTransport({ command: requireCommand(config), args: config.args, env: config.env })
+        ? await this.stdioTransport(config)
         : new StreamableHTTPClientTransport(new URL(requireUrl(config)));
     await client.connect(transport);
     this.clients.set(config.id, client);
+  }
+
+  private async stdioTransport(config: McpServerRow): Promise<StdioClientTransport> {
+    const scratchDir = join(this.dataDir, "mcp-scratch", config.id);
+    const sandboxed = await sandboxCommand(requireCommand(config), config.args, scratchDir);
+    return new StdioClientTransport({ command: sandboxed.command, args: sandboxed.args, env: config.env, cwd: scratchDir });
   }
 
   async disconnect(id: string): Promise<void> {

@@ -6,11 +6,12 @@
   "version": "1.0.0",
   "sebasCompat": "^1.0.0",
   "repoUrl": "https://github.com/victorcarmo2003/sebas-module-changelog-roblox",
-  "capabilities": ["controller", "cron", "discordCommands"],
+  "capabilities": ["controller", "cron", "discordCommands", "tools"],
   "entryPoints": {
     "controller": "dist/controller.js",
     "chronos": "dist/cron.js",
-    "discordCommands": "dist/discord-commands.js"
+    "discordCommands": "dist/discord-commands.js",
+    "tools": "dist/tools.js"
   },
   "cron": { "schedule": "7,37 * * * *", "timeoutMs": 600000 },
   "discordCommands": { "commands": ["setup", "teste"] },

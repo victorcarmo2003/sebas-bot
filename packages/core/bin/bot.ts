@@ -9,7 +9,7 @@ import { resolveActiveAiProvider } from "../src/core/ai/registry.js";
 import { loadCoreConfig } from "../src/core/config/env.js";
 import { openDb } from "../src/core/db/client.js";
 import { runMigrations } from "../src/core/db/migrate.js";
-import { editDiscordInteractionOriginalResponse } from "../src/core/discord/client.js";
+import { editDiscordInteractionOriginalResponse, sendDiscordChannelMessage } from "../src/core/discord/client.js";
 import { McpClientManager, listMcpServers } from "../src/core/mcp/client.js";
 import { startMcpServer } from "../src/core/mcp/server.js";
 import { grantedPermissionsForInTreeModule } from "../src/core/modules/grants.js";
@@ -40,7 +40,7 @@ host.start({
   granted: grantedPermissionsForInTreeModule(inTreeManifest)
 });
 
-const mcpClientManager = new McpClientManager();
+const mcpClientManager = new McpClientManager(dirname(config.dbPath));
 for (const server of listMcpServers(db)) {
   if (!server.enabled) continue;
   mcpClientManager.connect(server).catch((error) => {
@@ -127,24 +127,54 @@ app.post("/interactions", async (c) => {
   return c.json({ type: RESPONSE_DEFERRED_CHANNEL_MESSAGE, data: { flags: MESSAGE_FLAG_EPHEMERAL } });
 });
 
-async function handleSebasChatCommand(interaction: DiscordInteraction): Promise<void> {
-  const userMessage = interaction.data?.options?.find((option) => option.name === "mensagem")?.value ?? "";
-  const provider = resolveActiveAiProvider(db);
-  if (!provider) {
-    await editDiscordInteractionOriginalResponse(
-      config.discordApplicationId,
-      interaction.token,
-      "Ainda não tenho um provedor de IA configurado. Configure no painel primeiro."
-    );
-    return;
+// Rota interna, nao exposta ao Discord — bin/gateway.ts fala com o bot por aqui quando ve uma
+// mencao ou DM real (conversa passiva, sem slash command). Mesmo secret da admin API porque
+// os dois processos rodam na mesma maquina/confianca; nao e' pensado pra ser exposto externamente.
+app.post("/internal/gateway-message", async (c) => {
+  const auth = c.req.header("authorization");
+  if (!process.env.ADMIN_API_SECRET || auth !== `Bearer ${process.env.ADMIN_API_SECRET}`) {
+    return c.json({ error: "unauthorized" }, 401);
   }
+  const body = await c.req.json();
+  if (!body.channelId || typeof body.content !== "string") {
+    return c.json({ error: "channelId and content are required" }, 400);
+  }
+  void handleGatewayMessage(body.channelId, body.content).catch((error) => {
+    console.error("gateway-message handling failed:", error);
+  });
+  return c.json({ ok: true });
+});
+
+/** Roda o agent-loop com a persona do Sebas. Devolve null quando nao ha provider de IA
+ * configurado (chamador decide se isso vira mensagem visivel ou fica em silencio). */
+async function runSebasReply(userMessage: string): Promise<string | null> {
+  const provider = resolveActiveAiProvider(db);
+  if (!provider) return null;
 
   const persona = await skillsToolProvider.callTool("load_skill", { name: "sebas-persona" });
   const systemPrompt = persona.ok ? (persona.result as { content: string }).content : undefined;
 
   const result = await runAgentLoop(provider, toolRegistry, { systemPrompt, userPrompt: userMessage });
-  const reply = result.ok ? result.text || "Não tenho uma resposta pra isso." : `Não consegui responder: ${result.error}`;
-  await editDiscordInteractionOriginalResponse(config.discordApplicationId, interaction.token, reply.slice(0, 1900));
+  return result.ok ? result.text || "Não tenho uma resposta pra isso." : `Não consegui responder: ${result.error}`;
+}
+
+async function handleSebasChatCommand(interaction: DiscordInteraction): Promise<void> {
+  const userMessage = interaction.data?.options?.find((option) => option.name === "mensagem")?.value ?? "";
+  const reply = await runSebasReply(userMessage);
+  await editDiscordInteractionOriginalResponse(
+    config.discordApplicationId,
+    interaction.token,
+    (reply ?? "Ainda não tenho um provedor de IA configurado. Configure no painel primeiro.").slice(0, 1900)
+  );
+}
+
+async function handleGatewayMessage(channelId: string, content: string): Promise<void> {
+  // Sem provider configurado, fica em silencio aqui — diferente do /sebas (resposta so pro
+  // autor, ephemeral), isso e' canal compartilhado; nao faz sentido avisar "configure a IA"
+  // toda vez que alguem menciona o bot.
+  const reply = await runSebasReply(content);
+  if (!reply) return;
+  await sendDiscordChannelMessage(config.discordBotToken, channelId, { content: reply.slice(0, 1900) });
 }
 
 function verifySignature(signature: string | undefined, timestamp: string | undefined, body: string, publicKey: string): boolean {

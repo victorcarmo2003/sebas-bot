@@ -76,6 +76,16 @@ function requireScope(admin: Admin, scope: PermissionScope): Response | null {
   return null;
 }
 
+/** Instalar modulo e cadastrar servidor MCP disparam execucao de comando arbitrario (clone+build,
+ * spawn de processo) — mesmo com sandboxCommand() (ver security/sandbox.ts), so o dono, nao
+ * qualquer subadmin com "modules:manage", pode iniciar isso. Mesmo padrao de /ai/opencode/key. */
+function requireOwner(admin: Admin): Response | null {
+  if (admin.role !== "owner") {
+    return Response.json({ error: "only the owner can do this" }, { status: 403 });
+  }
+  return null;
+}
+
 function registerAdminsRoutes(app: Hono<Env>, deps: AdminApiDeps): void {
   app.get("/admins", (c) => {
     const denied = requireScope(c.get("admin"), "admins:manage");
@@ -152,7 +162,7 @@ function registerModulesRoutes(app: Hono<Env>, deps: AdminApiDeps): void {
 
   app.post("/modules/install", async (c) => {
     const admin = c.get("admin");
-    const denied = requireScope(admin, "modules:manage");
+    const denied = requireOwner(admin);
     if (denied) return denied;
     const body = await c.req.json();
     if (!body.repoUrl) {
@@ -309,7 +319,7 @@ function registerMcpRoutes(app: Hono<Env>, deps: AdminApiDeps): void {
   });
 
   app.post("/mcp/servers", async (c) => {
-    const denied = requireScope(c.get("admin"), "modules:manage");
+    const denied = requireOwner(c.get("admin"));
     if (denied) return denied;
     const body = await c.req.json();
     if (!body.id || !body.name || !body.transport) {

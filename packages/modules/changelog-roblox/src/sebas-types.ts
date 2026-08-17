@@ -98,3 +98,22 @@ export interface SebasControllerResponse {
   status: number;
   body: unknown;
 }
+
+/** Definicao de tool no formato de function-calling OpenAI-compatible — mesmo shape que o core
+ * espera em src/core/modules/types.ts (SebasToolDefinition). */
+export interface SebasToolDefinition {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+}
+
+export interface SebasToolCallResult {
+  ok: boolean;
+  result?: unknown;
+  error?: string;
+}
+
+export interface SebasModuleTools {
+  tools: SebasToolDefinition[];
+  callTool(ctx: SebasModuleContext, name: string, args: Record<string, unknown>): Promise<SebasToolCallResult>;
+}

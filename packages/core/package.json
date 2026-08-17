@@ -10,8 +10,10 @@
     "migrate": "tsx src/core/db/migrate.ts",
     "dev:bot": "tsx watch bin/bot.ts",
     "dev:worker": "tsx watch bin/worker.ts",
+    "dev:gateway": "tsx watch bin/gateway.ts",
     "start:bot": "node dist/bin/bot.js",
-    "start:worker": "node dist/bin/worker.js"
+    "start:worker": "node dist/bin/worker.js",
+    "start:gateway": "node dist/bin/gateway.js"
   },
   "engines": {
     "node": ">=24"

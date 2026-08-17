@@ -76,3 +76,20 @@ Motivação: usuário quer um "mordomo" capaz no Discord (comando + listagem de 
 **Risco conhecido, não resolvido**: `mcp/client.ts` com transporte `stdio` spawna processo arbitrário com privilégio do host — mesma categoria de risco do build de módulo em `installer.ts` (M5), documentado, não isolado.
 
 **Fora deste milestone, de propósito**: Discord Gateway (WebSocket) pra conversa passiva (menção/DM sem slash command) — precisa de processo persistente, reconexão, intent privilegiado `MESSAGE_CONTENT` aprovado no Discord Developer Portal. Por enquanto a interação com o mordomo é só via `/sebas`.
+
+## M10 — Gateway, tools do módulo, sandbox hardening (concluído em 2026-08-17)
+
+Continuação de M9: as 4 pendências que sobraram. Plano completo em `C:\Users\hakor\.claude\plans\harmonic-frolicking-map.md` (Fases A–E — A–D concluídas aqui, E é o redeploy em produção, ainda não executado, pede confirmação separada).
+
+- [x] **Fase A** — `packages/modules/changelog-roblox/src/tools.ts`: `historico_changelog`, `configuracao_guild`, `buscar_changelog_por_versao`, `detalhe_changelog_postado` — reaproveita `history.ts`/`guild-storage.ts`/`roblox-rss.ts` que já existiam. Manifest ganhou `entryPoints.tools`/capability `"tools"`. Testado via `/api/admin/tools` e chamada real através do servidor MCP.
+- [x] **Fase B** — `src/core/security/sandbox.ts`: `npm install --ignore-scripts` (bloqueia RCE via postinstall) + wrap opcional via `bubblewrap` (`bwrap`) quando disponível no host (root read-only, só a scratch dir gravável, PID namespace próprio — **não** isola rede, `npm install`/protocolo MCP precisam dela) — usado em `installer.ts` (clone+build de módulo) e `mcp/client.ts` (spawn de servidor MCP `stdio`, cada um numa scratch dir própria em `mcp-scratch/<id>`). `POST /modules/install` e `POST /mcp/servers` agora exigem `role === "owner"`, não só o scope `modules:manage`.
+- [x] **Fase C** — `bin/gateway.ts`: cliente do Discord Gateway (WebSocket nativo do Node, sem dependência nova) — identify/heartbeat com jitter/resume/reconexão com backoff, filtra menção+DM, repassa pra `bin/bot.ts` via `POST /internal/gateway-message` (nova rota, mesmo secret da admin API). A lógica de IA fica centralizada em `bin/bot.ts` (`runSebasReply`, compartilhada com `/sebas`) — o gateway só encaminha, não duplica a stack. Novo `systemd/sebas-gateway.service`.
+- [x] **Fase D** — `scripts/backfill-changelog-storage.mjs`: copia dado das tabelas antigas (`changelog_roblox_posted`/`_guild_settings`/`_guild_state`/`_settings`, achado em M4) pro schema novo (`module_storage`/`module_config`/`mod_changelog_roblox_posted`). Roda manual, uma vez, idempotente (`ON CONFLICT DO UPDATE` + dedupe por guid).
+
+**Testado, com uma ressalva honesta**: Fase A com chamada real ponta a ponta; Fase B com `--ignore-scripts` de verdade (reinstalação completa do módulo passou) — o wrap `bwrap` em si só é testável de verdade na VM Linux (ambiente de dev é Windows, sem bwrap, cai no fallback avisado "sem sandbox"); Fase C conectou de verdade no Gateway real do Discord (`wss://gateway.discord.gg`) até o `IDENTIFY`, confirmado rejeitado com `4004` (token de teste inválido) — o caminho completo `MESSAGE_CREATE → agent-loop → resposta` não foi testado contra um bot real (precisa de `DISCORD_BOT_TOKEN` de verdade, que eu não tenho); a rota `/internal/gateway-message` foi testada isoladamente (auth + comportamento "silencioso sem provider"). Fase D testada com dado sintético reproduzindo o schema antigo, incluindo teste de idempotência (rodar duas vezes).
+
+**Pré-requisito que só o usuário resolve**: habilitar o intent privilegiado `MESSAGE_CONTENT` no Discord Developer Portal do app, pra `bin/gateway.ts` funcionar de verdade.
+
+## M11 — Redeploy em produção (Fase E do plano) — não iniciado
+
+Toca a VM de verdade (`163.176.111.187`) — parar serviço e trocar `sebas.db`/`dist/` em produção. Só executa com confirmação explícita no momento, mesmo com o plano já aprovado. Sequência completa na Fase E do arquivo de plano.

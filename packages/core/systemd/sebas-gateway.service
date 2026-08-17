@@ -1,0 +1,24 @@
+[Unit]
+Description=Sebas gateway - conexao persistente com o Discord Gateway (conversa passiva)
+After=network.target sebas-bot.service
+
+[Service]
+Type=simple
+User=sebas
+WorkingDirectory=/opt/sebas/bot
+EnvironmentFile=/opt/sebas/bot/.env
+ExecStart=/usr/bin/node dist/bin/gateway.js
+Restart=always
+RestartSec=2
+StartLimitIntervalSec=0
+
+# So mantem um socket e repassa mensagem via HTTP interno pro sebas-bot — nao toca o banco,
+# nao roda IA/tools direto, por isso o teto de memoria e' bem menor que os outros dois.
+MemoryMax=80M
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
