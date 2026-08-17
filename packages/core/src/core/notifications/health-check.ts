@@ -68,6 +68,24 @@ export async function runAiHealthCheck(db: DatabaseSync, config: CoreConfig): Pr
   }
 }
 
+const GITHUB_TOKEN_DEDUPE_KEY = "github:token:missing";
+
+/** GITHUB_TOKEN e' so variavel de ambiente (nao tem fluxo de "salvar no painel" como a chave de
+ * IA) — sem ela, GET /api/admin/modules/discover (busca de modulo/servidor MCP no GitHub) falha
+ * direto. Mesmo padrao de pendencia que a IA, so que sem actionKind (nao tem formulario pra
+ * resolver isso pelo painel, e' reiniciar o processo com a variavel setada). */
+export async function runGithubTokenHealthCheck(db: DatabaseSync, config: CoreConfig): Promise<void> {
+  if (!process.env.GITHUB_TOKEN) {
+    await raise(db, config, {
+      dedupeKey: GITHUB_TOKEN_DEDUPE_KEY,
+      title: "Configure um token do GitHub",
+      message: "Sem GITHUB_TOKEN configurado, a busca de módulos e servidores MCP no GitHub (marketplace) não funciona. Adicione a variável no .env do core e reinicie o processo."
+    });
+    return;
+  }
+  resolveByDedupe(db, GITHUB_TOKEN_DEDUPE_KEY);
+}
+
 function resolveByDedupe(db: DatabaseSync, dedupeKey: string): void {
   resolvePendingActionByDedupeKey(db, dedupeKey, "system");
 }
@@ -75,7 +93,7 @@ function resolveByDedupe(db: DatabaseSync, dedupeKey: string): void {
 async function raise(
   db: DatabaseSync,
   config: CoreConfig,
-  input: { dedupeKey: string; title: string; message: string; actionKind: string }
+  input: { dedupeKey: string; title: string; message: string; actionKind?: string }
 ): Promise<void> {
   const { action, isNewOrReopened } = upsertPendingAction(db, {
     kind: "ai_provider",

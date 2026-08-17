@@ -41,6 +41,14 @@ export interface DiscordMessagePayload {
   allowed_mentions?: { parse: string[] };
 }
 
+/** Mostra "Fulano esta digitando..." no canal por ~10s (limite do proprio Discord — precisa
+ * repetir a chamada se o processamento demorar mais que isso). Usado na conversa passiva
+ * (bin/gateway.ts -> /internal/gateway-message) pra dar feedback visivel enquanto o agent-loop
+ * roda; o /sebas via slash command ja tem "Sebas esta pensando..." de graca via defer. */
+export async function triggerTypingIndicator(botToken: string, channelId: string): Promise<void> {
+  await discordFetch(botToken, `/channels/${channelId}/typing`, { method: "POST" });
+}
+
 export async function sendDiscordChannelMessage(botToken: string, channelId: string, message: DiscordMessagePayload): Promise<void> {
   await discordFetch(botToken, `/channels/${channelId}/messages`, {
     method: "POST",

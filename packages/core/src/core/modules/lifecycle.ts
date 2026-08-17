@@ -1,9 +1,18 @@
+import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { Cron } from "croner";
 import { diffAgainstGrantedItems, grantsRequestedByManifest, loadActiveGrantItems, permissionsFromGrantItems, recordGrants, revokeAllGrants } from "./grants.js";
 import { resolveEntryPoints } from "./installer.js";
 import type { ModuleHost } from "./host.js";
-import { deleteModuleInstall, getModuleInstall, markFirstEnabled, recordModuleEvent, setModuleInstallState, toModuleDetail } from "./marketplace-repo.js";
+import {
+  deleteModuleInstall,
+  getModuleInstall,
+  IN_TREE_PINNED_SHA,
+  markFirstEnabled,
+  recordModuleEvent,
+  setModuleInstallState,
+  toModuleDetail
+} from "./marketplace-repo.js";
 
 const cronJobs = new Map<string, InstanceType<typeof Cron>>();
 
@@ -32,7 +41,10 @@ export function enableModule(db: DatabaseSync, host: ModuleHost, dataDir: string
     throw new Error(`Module "${moduleId}" must be approved before it can be enabled (current state: ${row.state}).`);
   }
   const detail = toModuleDetail(db, row);
-  const moduleDir = `${dataDir}/installed-modules/${moduleId}`;
+  // Modulo in-tree vive em packages/modules/<id> (junto do monorepo), nao na scratch dir do
+  // marketplace (dataDir/installed-modules/<id>) — mesma logica de IN_TREE_MODULE_DIR em bin/bot.ts.
+  const moduleDir =
+    row.pinned_sha === IN_TREE_PINNED_SHA ? join(process.cwd(), "..", "modules", moduleId) : join(dataDir, "installed-modules", moduleId);
   const entryPoints = resolveEntryPoints(moduleDir, detail.manifest);
   const granted = permissionsFromGrantItems(loadActiveGrantItems(db, moduleId));
 

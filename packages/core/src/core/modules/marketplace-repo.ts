@@ -1,6 +1,11 @@
 import type { DatabaseSync } from "node:sqlite";
-import { loadActiveGrantItems } from "./grants.js";
+import { grantsRequestedByManifest, loadActiveGrantItems, recordGrants } from "./grants.js";
 import type { PermissionDiffItem, SebasModuleManifest } from "./types.js";
+
+/** Sentinela em `pinned_sha` pra módulos in-tree (embutidos no monorepo) — não vieram de um
+ * clone de repo de verdade, então não têm SHA. Usado pra distinguir de módulos instalados via
+ * marketplace onde precisar (ex.: `lifecycle.ts` decide onde procurar os entrypoints). */
+export const IN_TREE_PINNED_SHA = "in-tree";
 
 export type ModuleInstallState = "pending" | "approved" | "enabled" | "disabled" | "rejected";
 
@@ -37,7 +42,7 @@ export interface ModuleDetail {
   pendingPermissionDiff: PermissionDiffItem[];
 }
 
-interface ModuleInstallRow {
+export interface ModuleInstallRow {
   id: string;
   repo_url: string;
   pinned_sha: string;
@@ -91,6 +96,30 @@ export function markFirstEnabled(db: DatabaseSync, id: string, by: string): void
     by,
     id
   );
+}
+
+/**
+ * Módulos in-tree (embutidos no monorepo, ver `grantedPermissionsForInTreeModule` em grants.ts)
+ * nunca passam pelo fluxo de install do marketplace — mas o painel/admin API tratam TODO módulo
+ * uniformemente via `module_installs` (GET /modules/:id, enable/disable, grants). Sem essa
+ * linha, `GET /modules/changelog-roblox` sempre dava 404 e a tela do painel quebrava.
+ * Idempotente: só cria na primeira vez (boot seguinte encontra a linha e não mexe no estado —
+ * assim um "desabilitar" feito pelo dono sobrevive a um restart do processo).
+ */
+export function ensureInTreeModuleRegistered(db: DatabaseSync, manifest: SebasModuleManifest): ModuleInstallRow {
+  const existing = getModuleInstall(db, manifest.id);
+  if (existing) return existing;
+
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO module_installs (id, repo_url, pinned_sha, installed_version, state, manifest, first_enabled_at, first_enabled_by, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'enabled', ?, ?, 'system', ?, ?)`
+  ).run(manifest.id, manifest.repoUrl, IN_TREE_PINNED_SHA, manifest.version, JSON.stringify(manifest), now, now, now);
+  recordGrants(db, manifest.id, grantsRequestedByManifest(manifest), "system");
+  recordModuleEvent(db, manifest.id, "install", "system", { source: "in-tree" });
+
+  // getModuleInstall() nunca retorna null aqui — acabou de inserir a linha acima.
+  return getModuleInstall(db, manifest.id) as ModuleInstallRow;
 }
 
 export function deleteModuleInstall(db: DatabaseSync, id: string): void {

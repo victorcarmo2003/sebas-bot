@@ -9,12 +9,13 @@ import { resolveActiveAiProvider } from "../src/core/ai/registry.js";
 import { loadCoreConfig } from "../src/core/config/env.js";
 import { openDb } from "../src/core/db/client.js";
 import { runMigrations } from "../src/core/db/migrate.js";
-import { editDiscordInteractionOriginalResponse, sendDiscordChannelMessage } from "../src/core/discord/client.js";
+import { editDiscordInteractionOriginalResponse, sendDiscordChannelMessage, triggerTypingIndicator } from "../src/core/discord/client.js";
 import { McpClientManager, listMcpServers } from "../src/core/mcp/client.js";
 import { startMcpServer } from "../src/core/mcp/server.js";
 import { grantedPermissionsForInTreeModule } from "../src/core/modules/grants.js";
 import { ModuleHost } from "../src/core/modules/host.js";
 import { resolveEntryPoints } from "../src/core/modules/installer.js";
+import { ensureInTreeModuleRegistered } from "../src/core/modules/marketplace-repo.js";
 import type { SebasModuleManifest } from "../src/core/modules/types.js";
 import { moduleToolProviders, ToolRegistry } from "../src/core/tools/registry.js";
 import { skillsToolProvider } from "../src/core/tools/skills.js";
@@ -34,11 +35,17 @@ const inTreeManifest = JSON.parse(readFileSync(join(IN_TREE_MODULE_DIR, "sebas.m
 const inTreeModuleId = inTreeManifest.id;
 
 const host = new ModuleHost(db, config);
-host.start({
-  moduleId: inTreeModuleId,
-  entryPoints: resolveEntryPoints(IN_TREE_MODULE_DIR, inTreeManifest),
-  granted: grantedPermissionsForInTreeModule(inTreeManifest)
-});
+// Registra o modulo in-tree em module_installs (idempotente) pra painel/admin API tratarem ele
+// igual a um modulo instalado — sem isso, GET /modules/:id sempre dava 404 pra ele. Se o dono
+// desabilitou pelo painel antes do ultimo restart, respeita isso (nao inicia de novo sozinho).
+const inTreeInstall = ensureInTreeModuleRegistered(db, inTreeManifest);
+if (inTreeInstall.state !== "disabled") {
+  host.start({
+    moduleId: inTreeModuleId,
+    entryPoints: resolveEntryPoints(IN_TREE_MODULE_DIR, inTreeManifest),
+    granted: grantedPermissionsForInTreeModule(inTreeManifest)
+  });
+}
 
 const mcpClientManager = new McpClientManager(dirname(config.dbPath));
 for (const server of listMcpServers(db)) {
@@ -169,12 +176,27 @@ async function handleSebasChatCommand(interaction: DiscordInteraction): Promise<
 }
 
 async function handleGatewayMessage(channelId: string, content: string): Promise<void> {
-  // Sem provider configurado, fica em silencio aqui — diferente do /sebas (resposta so pro
-  // autor, ephemeral), isso e' canal compartilhado; nao faz sentido avisar "configure a IA"
-  // toda vez que alguem menciona o bot.
-  const reply = await runSebasReply(content);
-  if (!reply) return;
-  await sendDiscordChannelMessage(config.discordBotToken, channelId, { content: reply.slice(0, 1900) });
+  // "Fulano esta digitando..." enquanto o agent-loop roda — unico feedback visivel que da pra
+  // dar aqui (nao tem defer/thinking automatico como o slash command). O indicador do Discord
+  // dura so ~10s, entao reforca a cada 8s ate a resposta ficar pronta.
+  const stopTyping = startTypingLoop(channelId);
+  try {
+    // Sem provider configurado, fica em silencio aqui — diferente do /sebas (resposta so pro
+    // autor, ephemeral), isso e' canal compartilhado; nao faz sentido avisar "configure a IA"
+    // toda vez que alguem menciona o bot.
+    const reply = await runSebasReply(content);
+    if (!reply) return;
+    await sendDiscordChannelMessage(config.discordBotToken, channelId, { content: reply.slice(0, 1900) });
+  } finally {
+    stopTyping();
+  }
+}
+
+function startTypingLoop(channelId: string): () => void {
+  const trigger = () => void triggerTypingIndicator(config.discordBotToken, channelId).catch(() => undefined);
+  trigger();
+  const interval = setInterval(trigger, 8_000);
+  return () => clearInterval(interval);
 }
 
 function verifySignature(signature: string | undefined, timestamp: string | undefined, body: string, publicKey: string): boolean {

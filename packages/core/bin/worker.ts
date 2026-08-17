@@ -5,10 +5,11 @@ import { loadCoreConfig } from "../src/core/config/env.js";
 import { openDb } from "../src/core/db/client.js";
 import { runMigrations } from "../src/core/db/migrate.js";
 import { logRun } from "../src/core/logging.js";
-import { runAiHealthCheck } from "../src/core/notifications/health-check.js";
+import { runAiHealthCheck, runGithubTokenHealthCheck } from "../src/core/notifications/health-check.js";
 import { ModuleHost } from "../src/core/modules/host.js";
 import { grantedPermissionsForInTreeModule } from "../src/core/modules/grants.js";
 import { resolveEntryPoints } from "../src/core/modules/installer.js";
+import { ensureInTreeModuleRegistered } from "../src/core/modules/marketplace-repo.js";
 import type { SebasModuleManifest } from "../src/core/modules/types.js";
 import { claimNext, failJob } from "../src/core/queue/sqlite-queue.js";
 
@@ -21,11 +22,15 @@ const inTreeManifest = JSON.parse(readFileSync(join(IN_TREE_MODULE_DIR, "sebas.m
 const inTreeModuleId = inTreeManifest.id;
 
 const host = new ModuleHost(db, config);
-host.start({
-  moduleId: inTreeModuleId,
-  entryPoints: resolveEntryPoints(IN_TREE_MODULE_DIR, inTreeManifest),
-  granted: grantedPermissionsForInTreeModule(inTreeManifest)
-});
+const inTreeInstall = ensureInTreeModuleRegistered(db, inTreeManifest);
+const inTreeEnabled = inTreeInstall.state !== "disabled";
+if (inTreeEnabled) {
+  host.start({
+    moduleId: inTreeModuleId,
+    entryPoints: resolveEntryPoints(IN_TREE_MODULE_DIR, inTreeManifest),
+    granted: grantedPermissionsForInTreeModule(inTreeManifest)
+  });
+}
 
 const DRAIN_IDLE_SLEEP_MS = 4_000;
 let draining = false;
@@ -67,7 +72,7 @@ setInterval(() => {
   void drainQueue();
 }, DRAIN_IDLE_SLEEP_MS);
 
-if (inTreeManifest.cron?.schedule) {
+if (inTreeEnabled && inTreeManifest.cron?.schedule) {
   new Cron(inTreeManifest.cron.schedule, async () => {
     try {
       await host.runChronos(inTreeModuleId);
@@ -90,8 +95,14 @@ new Cron("*/30 * * * *", async () => {
   } catch (error) {
     console.error("AI health check failed:", error);
   }
+  try {
+    await runGithubTokenHealthCheck(db, config);
+  } catch (error) {
+    console.error("GitHub token health check failed:", error);
+  }
 });
 
 console.log("sebas-worker started. Cron registered, queue drain loop running.");
 void drainQueue();
 void runAiHealthCheck(db, config).catch((error) => console.error("Initial AI health check failed:", error));
+void runGithubTokenHealthCheck(db, config).catch((error) => console.error("Initial GitHub token health check failed:", error));
