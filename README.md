@@ -1,4 +1,5 @@
 HUMAN DOC: https://victorcarmo2003.github.io/sebas-bot/human/
+
 AI DOC: https://victorcarmo2003.github.io/sebas-bot/ai/
 
 
