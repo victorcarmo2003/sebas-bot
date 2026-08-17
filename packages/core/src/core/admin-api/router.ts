@@ -3,7 +3,9 @@ import type { DatabaseSync } from "node:sqlite";
 import type { CoreConfig } from "../config/env.js";
 import { listOpenCodeModels, testOpenCodeKey } from "../ai/opencode-client.js";
 import { getAiProviderSettings, saveAiProviderKey, selectAiProviderModel } from "../ai/settings-repo.js";
-import { runAiHealthCheck } from "../notifications/health-check.js";
+import { testGithubToken } from "../github/client.js";
+import { getGithubToken, saveGithubToken } from "../github/settings-repo.js";
+import { runAiHealthCheck, runGithubTokenHealthCheck } from "../notifications/health-check.js";
 import { listPendingActions, resolvePendingActionById } from "../notifications/repo.js";
 import { discoverModules } from "../modules/discover.js";
 import type { ModuleHost } from "../modules/host.js";
@@ -62,6 +64,7 @@ export function createAdminApiRouter(deps: AdminApiDeps): Hono<Env> {
   registerModulesRoutes(app, deps);
   registerNotificationsRoutes(app, deps);
   registerAiRoutes(app, deps);
+  registerGithubRoutes(app, deps);
   registerToolsRoutes(app, deps);
   registerMcpRoutes(app, deps);
   registerInTreeControllerFallback(app, deps);
@@ -299,6 +302,30 @@ function registerAiRoutes(app: Hono<Env>, deps: AdminApiDeps): void {
     selectAiProviderModel(deps.db, "opencode", body.model);
     await runAiHealthCheck(deps.db, deps.config);
     return c.json({ ok: true, model: body.model });
+  });
+}
+
+function registerGithubRoutes(app: Hono<Env>, deps: AdminApiDeps): void {
+  app.get("/github/status", (c) => {
+    return c.json({ hasToken: Boolean(getGithubToken(deps.db)) });
+  });
+
+  app.post("/github/token", async (c) => {
+    const admin = c.get("admin");
+    if (admin.role !== "owner") {
+      return c.json({ error: "only the owner can configure the GitHub token" }, 403);
+    }
+    const body = await c.req.json();
+    if (!body.token) {
+      return c.json({ error: "token is required" }, 400);
+    }
+    const check = await testGithubToken(body.token);
+    if (!check.ok) {
+      return c.json({ error: check.error ?? "invalid token" }, 400);
+    }
+    saveGithubToken(deps.db, body.token);
+    await runGithubTokenHealthCheck(deps.db, deps.config);
+    return c.json({ ok: true });
   });
 }
 

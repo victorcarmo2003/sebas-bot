@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { getGithubToken } from "../github/settings-repo.js";
 
 export interface DiscoveredModule {
   repoFullName: string;
@@ -20,11 +21,13 @@ interface GitHubCodeSearchItem {
 }
 
 /** Busca repos publicos com sebas.module.json na raiz via GitHub code search — precisa de
- * GITHUB_TOKEN (a code search API do GitHub exige autenticacao, mesmo pra conteudo publico). */
+ * token configurado (a code search API do GitHub exige autenticacao, mesmo pra conteudo
+ * publico). Token vem do painel (POST /api/admin/github/token), salvo em github_settings —
+ * mesmo padrao da chave de IA, nao e' env var. */
 export async function discoverModules(db: DatabaseSync, query: string): Promise<DiscoverModulesResult> {
-  const token = process.env.GITHUB_TOKEN;
+  const token = getGithubToken(db);
   if (!token) {
-    return { ok: false, items: [], error: "GITHUB_TOKEN is not configured on the core." };
+    return { ok: false, items: [], error: "Nenhum token do GitHub configurado. Configure no painel." };
   }
 
   const searchQuery = ["filename:sebas.module.json", query.trim()].filter(Boolean).join(" ");

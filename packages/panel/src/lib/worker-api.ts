@@ -415,3 +415,14 @@ export function selectOpenCodeModel(discordUserId: string, model: string): Promi
     body: JSON.stringify({ model })
   });
 }
+
+export function getGithubStatus(discordUserId: string): Promise<{ hasToken: boolean }> {
+  return callWorkerApi(discordUserId, "/github/status");
+}
+
+export function saveGithubToken(discordUserId: string, token: string): Promise<{ ok: boolean }> {
+  return callWorkerApi(discordUserId, "/github/token", {
+    method: "POST",
+    body: JSON.stringify({ token })
+  });
+}

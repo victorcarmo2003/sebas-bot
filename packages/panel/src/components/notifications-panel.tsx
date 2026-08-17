@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   listOpenCodeModelsAction,
   resolveNotificationAction,
+  saveGithubTokenAction,
   saveOpenCodeKeyAction,
   selectOpenCodeModelAction
 } from "@/app/(dashboard)/actions";
@@ -15,6 +16,11 @@ const SEVERITY_STYLE: Record<PendingAction["severity"], string> = {
   warning: "border-amber/40 bg-amber-deep",
   critical: "border-wine-border bg-wine-deep"
 };
+
+// Pendencias com um desses actionKind abrem um formulario de verdade no modal (ver
+// NotificationModal abaixo) — o resto so tem "marcar como resolvido". O item da lista mostra
+// "Configurar →" pras primeiras, deixando claro que tem algo pra fazer, nao so ler.
+const CONFIGURABLE_ACTION_KINDS = new Set(["ai_provider_setup", "github_token_setup"]);
 
 export function NotificationsPanel({ items }: { items: PendingAction[] }) {
   const [openId, setOpenId] = useState<number | null>(null);
@@ -28,17 +34,29 @@ export function NotificationsPanel({ items }: { items: PendingAction[] }) {
     <div className="flex flex-col gap-3">
       <h2 className="text-sm font-medium text-parchment-muted">Pendências</h2>
       <div className="flex flex-col gap-2">
-        {items.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => setOpenId(item.id)}
-            className={`flex flex-col gap-1 rounded-lg border p-4 text-left transition-colors hover:border-gold-dim ${SEVERITY_STYLE[item.severity]}`}
-          >
-            <span className="text-sm font-medium text-parchment">{item.title}</span>
-            <span className="text-xs text-parchment-muted">{item.message}</span>
-          </button>
-        ))}
+        {items.map((item) => {
+          const configurable = item.actionKind !== null && CONFIGURABLE_ACTION_KINDS.has(item.actionKind);
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setOpenId(item.id)}
+              className={`group flex items-center justify-between gap-3 rounded-lg border p-4 text-left transition-colors hover:border-gold-dim ${SEVERITY_STYLE[item.severity]}`}
+            >
+              <div className="flex flex-col gap-1">
+                <span className="text-sm font-medium text-parchment">{item.title}</span>
+                <span className="text-xs text-parchment-muted">{item.message}</span>
+              </div>
+              <span
+                className={`shrink-0 whitespace-nowrap text-xs font-medium transition-colors ${
+                  configurable ? "text-gold group-hover:text-gold-bright" : "text-parchment-dim group-hover:text-parchment-muted"
+                }`}
+              >
+                {configurable ? "Configurar →" : "Ver →"}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {active && <NotificationModal action={active} onClose={() => setOpenId(null)} />}
@@ -59,6 +77,8 @@ function NotificationModal({ action, onClose }: { action: PendingAction; onClose
 
         {action.actionKind === "ai_provider_setup" ? (
           <OpenCodeSetupForm notificationId={action.id} onDone={onClose} />
+        ) : action.actionKind === "github_token_setup" ? (
+          <GithubTokenSetupForm notificationId={action.id} onDone={onClose} />
         ) : (
           <div className="flex flex-col gap-4">
             <p className="text-sm text-parchment-muted">{action.message}</p>
@@ -182,6 +202,56 @@ function OpenCodeSetupForm({ notificationId, onDone }: { notificationId: number;
         className="w-fit rounded-md bg-gold px-4 py-2 text-sm font-medium text-ink hover:bg-gold-bright disabled:opacity-50"
       >
         {busy ? "Salvando..." : "Confirmar modelo"}
+      </button>
+    </div>
+  );
+}
+
+function GithubTokenSetupForm({ notificationId, onDone }: { notificationId: number; onDone: () => void }) {
+  const [token, setToken] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSave() {
+    setBusy(true);
+    setError(null);
+    const result = await saveGithubTokenAction(token.trim(), notificationId);
+    setBusy(false);
+    if (!result.ok) {
+      setError(result.error ?? "Não foi possível validar o token.");
+      return;
+    }
+    onDone();
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-parchment-muted">
+        Crie um token em{" "}
+        <a
+          href="https://github.com/settings/tokens/new?description=sebas-bot&scopes=public_repo"
+          target="_blank"
+          rel="noreferrer"
+          className="text-gold hover:text-gold-bright hover:underline"
+        >
+          github.com/settings/tokens/new
+        </a>{" "}
+        (escopo <code className="font-mono text-xs">public_repo</code> basta pra buscar módulos/servidores MCP públicos) e cole abaixo.
+      </p>
+      <input
+        value={token}
+        onChange={(event) => setToken(event.target.value)}
+        placeholder="ghp_..."
+        className="rounded-md border border-brass bg-ink px-3 py-2 font-mono text-sm text-parchment"
+      />
+      {error && <p className="text-sm text-wine">{error}</p>}
+      <button
+        type="button"
+        disabled={!token.trim() || busy}
+        onClick={handleSave}
+        className="w-fit rounded-md bg-gold px-4 py-2 text-sm font-medium text-ink hover:bg-gold-bright disabled:opacity-50"
+      >
+        {busy ? "Validando..." : "Salvar token"}
       </button>
     </div>
   );

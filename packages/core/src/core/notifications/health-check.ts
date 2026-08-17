@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import type { CoreConfig } from "../config/env.js";
 import { listOpenCodeModels, testOpenCodeKey } from "../ai/opencode-client.js";
 import { markAiProviderStatus, getAiProviderSettings } from "../ai/settings-repo.js";
+import { getGithubToken } from "../github/settings-repo.js";
 import { notifyDiscordUserOfPendingAction } from "./dm.js";
 import { markNotified, resolvePendingActionByDedupeKey, upsertPendingAction } from "./repo.js";
 
@@ -74,17 +75,17 @@ export async function runAiHealthCheck(db: DatabaseSync, config: CoreConfig): Pr
 
 const GITHUB_TOKEN_DEDUPE_KEY = "github:token:missing";
 
-/** GITHUB_TOKEN e' so variavel de ambiente (nao tem fluxo de "salvar no painel" como a chave de
- * IA) — sem ela, GET /api/admin/modules/discover (busca de modulo/servidor MCP no GitHub) falha
- * direto. Mesmo padrao de pendencia que a IA, so que sem actionKind (nao tem formulario pra
- * resolver isso pelo painel, e' reiniciar o processo com a variavel setada). */
+/** Token vem do painel (POST /api/admin/github/token), salvo em github_settings — mesmo padrao
+ * da chave de IA. Sem ele, GET /api/admin/modules/discover (busca de modulo/servidor MCP no
+ * GitHub) falha direto. */
 export async function runGithubTokenHealthCheck(db: DatabaseSync, config: CoreConfig): Promise<void> {
-  if (!process.env.GITHUB_TOKEN) {
+  if (!getGithubToken(db)) {
     await raise(db, config, {
       kind: "github_token",
       dedupeKey: GITHUB_TOKEN_DEDUPE_KEY,
       title: "Configure um token do GitHub",
-      message: "Sem GITHUB_TOKEN configurado, a busca de módulos e servidores MCP no GitHub (marketplace) não funciona. Adicione a variável no .env do core e reinicie o processo."
+      message: "Sem um token do GitHub configurado, a busca de módulos e servidores MCP no GitHub (marketplace) não funciona.",
+      actionKind: "github_token_setup"
     });
     return;
   }
