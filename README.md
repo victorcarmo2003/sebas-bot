@@ -1,3 +1,7 @@
+HUMAN DOC: https://victorcarmo2003.github.io/sebas-bot/human/
+AI DOC: https://victorcarmo2003.github.io/sebas-bot/ai/
+
+
 # sebas-bot
 
 Monorepo do Sebas — core, painel e módulos, reconstruído em 2026-08-16/17 a partir do que rodava em produção sem nenhum código-fonte versionado (ver `MILESTONES.md` pro histórico completo da investigação e da reescrita, e `C:\Users\hakor\.claude\plans\harmonic-frolicking-map.md` pro plano de arquitetura aprovado).
