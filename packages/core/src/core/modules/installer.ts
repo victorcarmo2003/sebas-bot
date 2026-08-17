@@ -13,12 +13,12 @@ import { sandboxCommand } from "../security/sandbox.js";
 const execFileAsync = promisify(execFile);
 const execAsync = promisify(exec);
 
-async function runGitCommand(args: string[], cwd: string, writableDir: string): Promise<{ stdout: string }> {
+export async function runGitCommand(args: string[], cwd: string, writableDir: string): Promise<{ stdout: string }> {
   const sandboxed = await sandboxCommand("git", args, writableDir);
   return execFileAsync(sandboxed.command, sandboxed.args, { cwd });
 }
 
-async function runNpmCommand(args: string[], cwd: string, writableDir: string): Promise<void> {
+export async function runNpmCommand(args: string[], cwd: string, writableDir: string): Promise<void> {
   const sandboxed = await sandboxCommand("npm", args, writableDir);
   if (sandboxed.command !== "npm") {
     // bwrap aplicado (so em Linux) - argv puro e seguro, git/npm nao tem o problema de .cmd la.

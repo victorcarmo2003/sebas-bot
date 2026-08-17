@@ -81,7 +81,16 @@ export interface ModuleRow {
   source: string;
 }
 
-export type ModuleCapability = "controller" | "cron" | "ui" | "discordCommands" | "aiProvider" | "storage" | "webhook";
+export type ModuleCapability =
+  | "controller"
+  | "cron"
+  | "ui"
+  | "discordCommands"
+  | "tools"
+  | "aiProvider"
+  | "storage"
+  | "webhook"
+  | "permissionGate";
 
 export interface SebasModuleManifest {
   schemaVersion: 1;
@@ -317,11 +326,33 @@ export function getModuleDetail(discordUserId: string, moduleId: string): Promis
   return callWorkerApi(discordUserId, `/modules/${moduleId}`);
 }
 
+export interface ModuleUpdateCheck {
+  hasUpdate: boolean;
+  currentSha: string | null;
+  remoteSha: string | null;
+}
+
+export function checkModuleUpdate(discordUserId: string, moduleId: string): Promise<ModuleUpdateCheck> {
+  return callWorkerApi(discordUserId, `/modules/${moduleId}/check-update`, { method: "POST" });
+}
+
+export interface ModuleUpdateResult {
+  ok: boolean;
+  error?: string;
+  fromSha?: string;
+  toSha?: string;
+}
+
+export function applyModuleUpdate(discordUserId: string, moduleId: string): Promise<ModuleUpdateResult> {
+  return callWorkerApi(discordUserId, `/modules/${moduleId}/update`, { method: "POST" });
+}
+
 export interface DiscoveredModule {
   repoFullName: string;
   repoUrl: string;
   htmlUrl: string;
   manifestPath: string;
+  moduleId: string | null;
   alreadyInstalled: boolean;
 }
 

@@ -74,7 +74,12 @@ export default async function ModuleMarketplacePage({ searchParams }: { searchPa
             </a>
             <div className="border-t border-brass-soft pt-3">
               {item.alreadyInstalled ? (
-                <span className="text-xs text-parchment-dim">Já instalado</span>
+                <Link
+                  href={`/modules/${item.moduleId}`}
+                  className="inline-block w-fit rounded-md border border-brass px-4 py-2 text-sm font-medium text-parchment-dim opacity-70 transition-opacity hover:opacity-100"
+                >
+                  Configurar
+                </Link>
               ) : (
                 <form action={installModuleAction}>
                   <input type="hidden" name="repoUrl" value={item.repoUrl} />

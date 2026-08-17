@@ -16,6 +16,7 @@ import { grantedPermissionsForInTreeModule } from "../src/core/modules/grants.js
 import { ModuleHost } from "../src/core/modules/host.js";
 import { resolveEntryPoints } from "../src/core/modules/installer.js";
 import { ensureInTreeModuleRegistered } from "../src/core/modules/marketplace-repo.js";
+import { updateModule } from "../src/core/modules/updater.js";
 import type { PermissionGateRequest, PermissionGateResult, SebasModuleManifest } from "../src/core/modules/types.js";
 import { moduleToolProviders, ToolRegistry } from "../src/core/tools/registry.js";
 import { skillsToolProvider } from "../src/core/tools/skills.js";
@@ -194,6 +195,20 @@ app.post("/internal/gateway-message", async (c) => {
     console.error("gateway-message handling failed:", error);
   });
   return c.json({ ok: true });
+});
+
+// Rota interna, mesma logica de confianca da /internal/gateway-message acima — bin/worker.ts
+// (processo separado, dono do cron de checagem de update) chama isso quando auto-update esta
+// ligado (Configuracoes -> Marketplace). Precisa rodar aqui e nao no worker porque e' este
+// processo (bot.ts) que tem o ModuleHost de verdade rodando os modulos instalados via marketplace
+// (controller/tools ficam servidos pela admin API deste processo, nao do worker).
+app.post("/internal/modules/:moduleId/update", async (c) => {
+  const auth = c.req.header("authorization");
+  if (!process.env.ADMIN_API_SECRET || auth !== `Bearer ${process.env.ADMIN_API_SECRET}`) {
+    return c.json({ error: "unauthorized" }, 401);
+  }
+  const result = await updateModule(db, host, dirname(config.dbPath), c.req.param("moduleId"), "system");
+  return c.json(result, result.ok ? 200 : 502);
 });
 
 /** Consulta o modulo de permissoes pra decidir se esse usuario pode falar com o Sebas nessa

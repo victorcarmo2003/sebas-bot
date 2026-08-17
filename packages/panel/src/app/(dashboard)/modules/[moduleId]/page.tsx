@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { Panel } from "@/components/panel";
 import { IdListEditor } from "@/components/id-list-editor";
+import { ModuleUpdatePanel } from "@/components/module-update-panel";
 import { requireSession } from "@/lib/require-session";
 import {
   approveModule,
@@ -131,6 +132,7 @@ export default async function ModuleDetailPage({ params }: { params: Promise<{ m
               </span>
             ))}
           </div>
+          <ModuleUpdatePanel moduleId={moduleDetail.id} pinnedSha={moduleDetail.pinnedSha} canApply={isOwner} />
         </div>
       </Panel>
 

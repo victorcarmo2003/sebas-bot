@@ -6,6 +6,7 @@ import { openDb } from "../src/core/db/client.js";
 import { runMigrations } from "../src/core/db/migrate.js";
 import { logRun } from "../src/core/logging.js";
 import { runAiHealthCheck, runGithubTokenHealthCheck } from "../src/core/notifications/health-check.js";
+import { runModuleUpdateCheckIfDue } from "../src/core/notifications/module-update-check.js";
 import { ModuleHost } from "../src/core/modules/host.js";
 import { grantedPermissionsForInTreeModule } from "../src/core/modules/grants.js";
 import { resolveEntryPoints } from "../src/core/modules/installer.js";
@@ -102,7 +103,19 @@ new Cron("*/30 * * * *", async () => {
   }
 });
 
+// Tick fixo curto (5min) — a funcao decide sozinha se "e' sua vez" com base no intervalo
+// configuravel em Configuracoes -> Marketplace (marketplace_poll_interval_minutes, default 60min).
+// Mesmo truque do resto do arquivo: cron fixo, intervalo de negocio variavel por dentro.
+new Cron("*/5 * * * *", async () => {
+  try {
+    await runModuleUpdateCheckIfDue(db, config);
+  } catch (error) {
+    console.error("Module update check failed:", error);
+  }
+});
+
 console.log("sebas-worker started. Cron registered, queue drain loop running.");
 void drainQueue();
 void runAiHealthCheck(db, config).catch((error) => console.error("Initial AI health check failed:", error));
 void runGithubTokenHealthCheck(db, config).catch((error) => console.error("Initial GitHub token health check failed:", error));
+void runModuleUpdateCheckIfDue(db, config).catch((error) => console.error("Initial module update check failed:", error));

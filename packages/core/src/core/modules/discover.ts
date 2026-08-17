@@ -6,6 +6,10 @@ export interface DiscoveredModule {
   repoUrl: string;
   htmlUrl: string;
   manifestPath: string;
+  /** id do manifest (sebas.module.json na raiz do repo) — null quando o fetch/parse falha
+   * (repo privado sem acesso, manifest invalido, etc). Usado tanto pra decidir alreadyInstalled
+   * quanto pro painel montar o link "Configurar" (/modules/:moduleId). */
+  moduleId: string | null;
   alreadyInstalled: boolean;
 }
 
@@ -50,15 +54,44 @@ export async function discoverModules(db: DatabaseSync, query: string): Promise<
     (db.prepare("SELECT id FROM module_installs").all() as Array<{ id: string }>).map((row) => row.id)
   );
 
-  const items: DiscoveredModule[] = (data.items ?? [])
-    .filter((item) => item.path === "sebas.module.json")
-    .map((item) => ({
+  const candidates = (data.items ?? []).filter((item) => item.path === "sebas.module.json");
+  const moduleIds = await Promise.all(candidates.map((item) => fetchManifestId(item.repository.full_name, token)));
+
+  const items: DiscoveredModule[] = candidates.map((item, index) => {
+    const moduleId = moduleIds[index];
+    return {
       repoFullName: item.repository.full_name,
       repoUrl: `${item.repository.html_url}.git`,
       htmlUrl: item.repository.html_url,
       manifestPath: item.path,
-      alreadyInstalled: installedIds.has(item.repository.full_name.split("/")[1] ?? "")
-    }));
+      moduleId,
+      // Nome do repo (ex. "sebas-module-permissions") nunca bate com o id do manifest (ex.
+      // "permissions") — so o id de verdade, lido do proprio sebas.module.json, decide isso.
+      alreadyInstalled: moduleId !== null && installedIds.has(moduleId)
+    };
+  });
 
   return { ok: true, items };
+}
+
+/** Le o id de dentro do sebas.module.json do repo via GitHub Contents API (um GET leve, sem
+ * clone) — null se o repo nao for acessivel ou o manifest nao parsear. */
+async function fetchManifestId(repoFullName: string, token: string): Promise<string | null> {
+  try {
+    const response = await fetch(`https://api.github.com/repos/${repoFullName}/contents/sebas.module.json`, {
+      headers: {
+        authorization: `Bearer ${token}`,
+        accept: "application/vnd.github+json",
+        "x-github-api-version": "2022-11-28"
+      }
+    });
+    if (!response.ok) return null;
+    const data = (await response.json()) as { content?: string; encoding?: string };
+    if (!data.content) return null;
+    const decoded = Buffer.from(data.content, (data.encoding as BufferEncoding) ?? "base64").toString("utf8");
+    const manifest = JSON.parse(decoded) as { id?: unknown };
+    return typeof manifest.id === "string" ? manifest.id : null;
+  } catch {
+    return null;
+  }
 }

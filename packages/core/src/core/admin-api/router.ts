@@ -18,12 +18,13 @@ import {
 import { testGithubToken } from "../github/client.js";
 import { getGithubToken, saveGithubToken } from "../github/settings-repo.js";
 import { runAiHealthCheck, runGithubTokenHealthCheck } from "../notifications/health-check.js";
-import { listPendingActions, resolvePendingActionById } from "../notifications/repo.js";
+import { listPendingActions, resolvePendingActionByDedupeKey, resolvePendingActionById } from "../notifications/repo.js";
 import { discoverModules } from "../modules/discover.js";
 import type { ModuleHost } from "../modules/host.js";
 import { installModule } from "../modules/installer.js";
 import { approveModule, disableModule, enableModule, rejectModule, uninstallModule } from "../modules/lifecycle.js";
 import { getModuleInstall, listModuleInstalls, toModuleDetail } from "../modules/marketplace-repo.js";
+import { checkForUpdates, updateModule } from "../modules/updater.js";
 import { diffAgainstGrantedItems, grantsRequestedByManifest, loadActiveGrantItems } from "../modules/grants.js";
 import type { SebasControllerRequest } from "../modules/types.js";
 import { createMcpServer, deleteMcpServer, listMcpServers, type McpClientManager } from "../mcp/client.js";
@@ -242,6 +243,33 @@ function registerModulesRoutes(app: Hono<Env>, deps: AdminApiDeps): void {
     if (denied) return denied;
     disableModule(deps.db, deps.host, c.req.param("id"), admin.discordUserId);
     return c.json({ ok: true });
+  });
+
+  app.post("/modules/:id/check-update", async (c) => {
+    const denied = requireScope(c.get("admin"), "modules:manage");
+    if (denied) return denied;
+    const moduleId = c.req.param("id");
+    const candidates = await checkForUpdates(deps.db, deps.dataDir);
+    const match = candidates.find((item) => item.moduleId === moduleId);
+    const row = getModuleInstall(deps.db, moduleId);
+    return c.json({
+      hasUpdate: Boolean(match),
+      currentSha: row?.pinned_sha ?? null,
+      remoteSha: match?.remoteSha ?? row?.pinned_sha ?? null
+    });
+  });
+
+  app.post("/modules/:id/update", async (c) => {
+    const admin = c.get("admin");
+    if (admin.role !== "owner") {
+      return c.json({ error: "only the owner can apply module updates" }, 403);
+    }
+    const moduleId = c.req.param("id");
+    const result = await updateModule(deps.db, deps.host, deps.dataDir, moduleId, admin.discordUserId);
+    if (result.ok && result.toSha) {
+      resolvePendingActionByDedupeKey(deps.db, `module-update:${moduleId}:${result.toSha}`, admin.discordUserId);
+    }
+    return c.json(result, result.ok ? 200 : 502);
   });
 }
 

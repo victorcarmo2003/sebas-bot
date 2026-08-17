@@ -6,7 +6,8 @@ import { usePathname } from "next/navigation";
 const ITEMS = [
   { href: "/settings/account", label: "Conta" },
   { href: "/settings/parameters", label: "Parâmetros" },
-  { href: "/settings/opencode", label: "OpenCode" }
+  { href: "/settings/opencode", label: "OpenCode" },
+  { href: "/settings/marketplace", label: "Marketplace" }
 ];
 
 // Sidebar vertical, mas dentro do max-w-4xl centralizado do layout do dashboard —
