@@ -7,7 +7,7 @@ import { runMigrations } from "../src/core/db/migrate.js";
 import { logRun } from "../src/core/logging.js";
 import { runAiHealthCheck, runGithubTokenHealthCheck } from "../src/core/notifications/health-check.js";
 import { runModuleUpdateCheckIfDue } from "../src/core/notifications/module-update-check.js";
-import { runSelfUpdateCheck } from "../src/core/notifications/self-update-check.js";
+import { runSelfUpdateCheckIfDue } from "../src/core/notifications/self-update-check.js";
 import { ModuleHost } from "../src/core/modules/host.js";
 import { grantedPermissionsForInTreeModule } from "../src/core/modules/grants.js";
 import { resolveEntryPoints } from "../src/core/modules/installer.js";
@@ -118,7 +118,7 @@ new Cron("*/5 * * * *", async () => {
     console.error("Module update check failed:", error);
   }
   try {
-    await runSelfUpdateCheck(db, config, repoRoot, dataDir);
+    await runSelfUpdateCheckIfDue(db, config, repoRoot, dataDir);
   } catch (error) {
     console.error("Self-update check failed:", error);
   }
@@ -129,4 +129,4 @@ void drainQueue();
 void runAiHealthCheck(db, config).catch((error) => console.error("Initial AI health check failed:", error));
 void runGithubTokenHealthCheck(db, config).catch((error) => console.error("Initial GitHub token health check failed:", error));
 void runModuleUpdateCheckIfDue(db, config).catch((error) => console.error("Initial module update check failed:", error));
-void runSelfUpdateCheck(db, config, repoRoot, dataDir).catch((error) => console.error("Initial self-update check failed:", error));
+void runSelfUpdateCheckIfDue(db, config, repoRoot, dataDir).catch((error) => console.error("Initial self-update check failed:", error));

@@ -25,7 +25,7 @@ import { installModule } from "../modules/installer.js";
 import { approveModule, disableModule, enableModule, rejectModule, uninstallModule } from "../modules/lifecycle.js";
 import { getModuleInstall, listModuleInstalls, toModuleDetail } from "../modules/marketplace-repo.js";
 import { checkForUpdates, updateModule } from "../modules/updater.js";
-import { checkSelfUpdateAvailable } from "../self-update/check.js";
+import { checkSelfUpdateAvailable, readCurrentVersion } from "../self-update/check.js";
 import { isSelfUpdateInProgress, readSelfUpdateStatus, requestSelfUpdate } from "../self-update/status.js";
 import { diffAgainstGrantedItems, grantsRequestedByManifest, loadActiveGrantItems } from "../modules/grants.js";
 import type { SebasControllerRequest } from "../modules/types.js";
@@ -512,8 +512,11 @@ function registerSettingsRoutes(app: Hono<Env>, deps: AdminApiDeps): void {
  * self-update/status.ts) — nao passa pelo banco, o script nao roda node nenhum. */
 function registerSelfUpdateRoutes(app: Hono<Env>, deps: AdminApiDeps): void {
   app.get("/self-update/status", async (c) => {
-    const status = await readSelfUpdateStatus(deps.dataDir);
-    return c.json(status);
+    const [status, currentVersion] = await Promise.all([
+      readSelfUpdateStatus(deps.dataDir),
+      readCurrentVersion(deps.repoRoot)
+    ]);
+    return c.json({ ...status, currentVersion });
   });
 
   app.post("/self-update/request", async (c) => {

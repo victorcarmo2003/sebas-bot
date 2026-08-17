@@ -8,6 +8,25 @@ export interface SelfUpdateCandidate {
   remoteSha: string;
 }
 
+export interface CurrentVersion {
+  sha: string;
+  committedAt: string | null;
+  subject: string | null;
+}
+
+/** So leitura (git log -1 no checkout local) — "versao atual" pra mostrar no painel, independente
+ * de o self-update ja ter rodado alguma vez nesta maquina ou nao. */
+export async function readCurrentVersion(repoRoot: string): Promise<CurrentVersion | null> {
+  try {
+    const { stdout } = await execFileAsync("git", ["log", "-1", "--format=%H%x1f%cI%x1f%s"], { cwd: repoRoot });
+    const [sha, committedAt, subject] = stdout.trim().split("\x1f");
+    if (!sha) return null;
+    return { sha, committedAt: committedAt ?? null, subject: subject ?? null };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * repoRoot e' o checkout do proprio sebas-bot rodando (dirname(dirname(process.cwd())) a partir
  * de packages/core, ver bin/worker.ts). So leitura (rev-parse local + ls-remote na origin

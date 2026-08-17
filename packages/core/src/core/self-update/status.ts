@@ -7,32 +7,54 @@ export type SelfUpdatePhase = "idle" | "requested" | "pulling" | "installing" | 
 export interface SelfUpdateStatus {
   phase: SelfUpdatePhase;
   error: string | null;
+  /** Ultima aplicacao bem-sucedida — persiste entre ciclos, independente do phase atual
+   * (ver self-update-last-applied.json, escrito so uma vez por ciclo, no "done"). null se o
+   * self-update nunca rodou de verdade ainda nesta maquina. */
+  lastAppliedSha: string | null;
+  lastAppliedAt: string | null;
 }
 
-const IDLE_STATUS: SelfUpdateStatus = { phase: "idle", error: null };
+const IDLE_FIELDS = { phase: "idle" as const, error: null };
 
 function statusPath(dataDir: string): string {
   return join(dataDir, "self-update-status.json");
+}
+
+function lastAppliedPath(dataDir: string): string {
+  return join(dataDir, "self-update-last-applied.json");
 }
 
 function markerPath(dataDir: string): string {
   return join(dataDir, "self-update-requested");
 }
 
-/** Le o arquivo de status escrito pelo script root (sebas-self-update.sh, fora do checkout,
- * fora do controle deste processo) — so leitura, ProtectSystem=strict permite ler qualquer
+async function readJsonFile<T>(path: string): Promise<T | null> {
+  if (!existsSync(path)) return null;
+  try {
+    return JSON.parse(await readFile(path, "utf8")) as T;
+  } catch {
+    return null;
+  }
+}
+
+/** Le o arquivo de status (fase corrente) + o de ultima aplicacao (persistente), ambos escritos
+ * pelo script root fora do checkout — so leitura, ProtectSystem=strict permite ler qualquer
  * caminho, so bloqueia escrita fora de ReadWritePaths (que inclui o dataDir). */
 export async function readSelfUpdateStatus(dataDir: string): Promise<SelfUpdateStatus> {
-  const path = statusPath(dataDir);
-  if (!existsSync(path)) return IDLE_STATUS;
-  try {
-    const raw = await readFile(path, "utf8");
-    const parsed = JSON.parse(raw) as Partial<SelfUpdateStatus>;
-    if (typeof parsed.phase !== "string") return IDLE_STATUS;
-    return { phase: parsed.phase as SelfUpdatePhase, error: parsed.error ?? null };
-  } catch {
-    return IDLE_STATUS;
-  }
+  const [statusFile, lastApplied] = await Promise.all([
+    readJsonFile<{ phase?: string; error?: string | null }>(statusPath(dataDir)),
+    readJsonFile<{ sha?: string; at?: string }>(lastAppliedPath(dataDir))
+  ]);
+
+  const phase = typeof statusFile?.phase === "string" ? (statusFile.phase as SelfUpdatePhase) : IDLE_FIELDS.phase;
+  const error = statusFile?.error ?? null;
+
+  return {
+    phase,
+    error,
+    lastAppliedSha: lastApplied?.sha ?? null,
+    lastAppliedAt: lastApplied?.at ?? null
+  };
 }
 
 const ACTIVE_PHASES = new Set<SelfUpdatePhase>(["requested", "pulling", "installing", "building", "copying-static", "restarting"]);
@@ -48,8 +70,9 @@ export async function isSelfUpdateInProgress(dataDir: string): Promise<boolean> 
 
 /** Cria o marker que o watcher root (sebas-self-update.path) observa. So isso — o processo
  * node nunca toca em git/npm/systemctl diretamente, ProtectSystem=strict do systemd nem
- * deixaria (ReadWritePaths so cobre o dataDir, nao o checkout do repo). */
+ * deixaria (ReadWritePaths so cobre o dataDir, nao o checkout do repo). Nao mexe no arquivo de
+ * "ultima aplicacao" — so o script root escreve nele, e so no "done". */
 export async function requestSelfUpdate(dataDir: string): Promise<void> {
-  await writeFile(statusPath(dataDir), JSON.stringify({ phase: "requested", error: null } satisfies SelfUpdateStatus), "utf8");
+  await writeFile(statusPath(dataDir), JSON.stringify({ phase: "requested", error: null }), "utf8");
   writeFileSync(markerPath(dataDir), "");
 }

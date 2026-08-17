@@ -1,0 +1,11 @@
+[Unit]
+Description=Poll for Sebas self-update request marker
+
+[Timer]
+OnBootSec=5s
+OnUnitActiveSec=2s
+AccuracySec=1s
+Unit=sebas-self-update.service
+
+[Install]
+WantedBy=timers.target

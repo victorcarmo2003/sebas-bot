@@ -147,7 +147,7 @@ export async function getSelfUpdateStatusAction(): Promise<SelfUpdateStatus> {
   try {
     return await getSelfUpdateStatus(session.discordUserId);
   } catch {
-    return { phase: "idle", error: null };
+    return { phase: "idle", error: null, lastAppliedSha: null, lastAppliedAt: null, currentVersion: null };
   }
 }
 

@@ -1,0 +1,6 @@
+[Unit]
+Description=Apply Sebas self-update (triggered by sebas-self-update.timer)
+
+[Service]
+Type=oneshot
+ExecStart=/opt/sebas/bin/sebas-self-update.sh

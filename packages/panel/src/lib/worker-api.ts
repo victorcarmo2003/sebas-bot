@@ -349,9 +349,18 @@ export function applyModuleUpdate(discordUserId: string, moduleId: string): Prom
 
 export type SelfUpdatePhase = "idle" | "requested" | "pulling" | "installing" | "building" | "copying-static" | "restarting" | "done" | "error";
 
+export interface CurrentVersion {
+  sha: string;
+  committedAt: string | null;
+  subject: string | null;
+}
+
 export interface SelfUpdateStatus {
   phase: SelfUpdatePhase;
   error: string | null;
+  lastAppliedSha: string | null;
+  lastAppliedAt: string | null;
+  currentVersion: CurrentVersion | null;
 }
 
 export function getSelfUpdateStatus(discordUserId: string): Promise<SelfUpdateStatus> {
