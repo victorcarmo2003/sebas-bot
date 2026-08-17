@@ -1,16 +1,19 @@
 [Unit]
 Description=Sebas panel - Next.js admin dashboard
 After=network.target
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 User=sebas
-WorkingDirectory=/opt/sebas/panel
-EnvironmentFile=/opt/sebas/panel/.env
+# next build com output:"standalone" em monorepo gera server.js dentro de
+# .next/standalone/packages/panel/, nao na raiz — e nao copia public/ nem .next/static
+# sozinho, isso e' passo manual de deploy (ver README "Rodando localmente" / redeploy).
+WorkingDirectory=/opt/sebas/sebas-bot/packages/panel/.next/standalone/packages/panel
+EnvironmentFile=/opt/sebas/sebas-bot/packages/panel/.next/standalone/packages/panel/.env
 ExecStart=/usr/bin/node server.js
 Restart=always
 RestartSec=2
-StartLimitIntervalSec=0
 
 MemoryMax=250M
 

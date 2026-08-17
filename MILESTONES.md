@@ -90,6 +90,18 @@ Continuação de M9: as 4 pendências que sobraram. Plano completo em `C:\Users\
 
 **Pré-requisito que só o usuário resolve**: habilitar o intent privilegiado `MESSAGE_CONTENT` no Discord Developer Portal do app, pra `bin/gateway.ts` funcionar de verdade.
 
-## M11 — Redeploy em produção (Fase E do plano) — não iniciado
+## M11 — Redeploy em produção (Fase E do plano) — concluído em 2026-08-17
 
-Toca a VM de verdade (`163.176.111.187`) — parar serviço e trocar `sebas.db`/`dist/` em produção. Só executa com confirmação explícita no momento, mesmo com o plano já aprovado. Sequência completa na Fase E do arquivo de plano.
+Repo publicada primeiro: `github.com/victorcarmo2003/sebas-bot` (privada), com deploy key read-only pra VM clonar sem PAT solto lá.
+
+- [x] Backup do `sebas.db` de produção antes de tocar em qualquer coisa (`/opt/sebas/backups/sebas.db.pre-redeploy-20260817042947`, cópia extra puxada pro disco local)
+- [x] `bubblewrap` instalado na VM (`apt install bubblewrap`) — Fase B do sandbox passa a valer de verdade
+- [x] Clone do repo via deploy key em `/opt/sebas/sebas-bot`, `npm install && npm run build` rodado direto na VM (evita qualquer risco de artefato Windows→Linux)
+- [x] `.env` novo em `packages/core`/`packages/panel` com as credenciais reais carregadas do deploy antigo (`DISCORD_BOT_TOKEN`, `AUTH_DISCORD_SECRET`, etc.) + `MCP_PORT` novo
+- [x] Migrations `0004`/`0005` aplicadas no `sebas.db` real; `scripts/backfill-changelog-storage.mjs` rodado contra o banco de produção (1 guild migrada, settings migradas, 0 changelog postado pra migrar — histórico antigo vazio)
+- [x] **Achado durante o deploy**: `next build` com `output: "standalone"` em monorepo gera `server.js` dentro de `.next/standalone/packages/panel/`, não na raiz do standalone — e não copia `public/`/`.next/static` sozinho. `sebas-panel.service` (local e VM) corrigido pra apontar pro caminho certo, com o copy manual documentado
+- [x] `systemd/*.service` atualizados (aqui e em `/etc/systemd/system` na VM) — `WorkingDirectory` novo (`/opt/sebas/sebas-bot/packages/*`), dado real continua em `/opt/sebas/bot/data` (fora do checkout git, não versionado), novo `sebas-gateway.service` habilitado. Também corrigido `StartLimitIntervalSec` (pertence à seção `[Unit]`, não `[Service]` — warning inofensivo do systemd que já vinha do deploy manual antigo)
+- [x] Todos os 4 serviços confirmados `active` e estáveis: `sebas-bot`, `sebas-panel`, `sebas-worker` (**reativado** — estava inativo desde antes de toda essa investigação), `sebas-gateway` (**conectou de verdade no Discord Gateway real, "READY como Sebas"**)
+- [x] Verificado via HTTPS pública (Caddy): `/health` e painel respondendo
+
+**Pendências pós-deploy, não bloqueantes**: `/opt/sebas/bot` e `/opt/sebas/panel` (deploy antigo, sem fonte) ainda existem no disco — não removidos de propósito, servem de rollback rápido se algo aparecer; remover quando o novo deploy provar estabilidade por uns dias. `sebas-module-changelog-roblox` (repo antigo, separado) não foi arquivado — módulo agora vive só dentro do monorepo.

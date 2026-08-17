@@ -1,16 +1,16 @@
 [Unit]
 Description=Sebas worker - cron, fila e execucao de modulos
 After=network.target
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 User=sebas
-WorkingDirectory=/opt/sebas/bot
-EnvironmentFile=/opt/sebas/bot/.env
+WorkingDirectory=/opt/sebas/sebas-bot/packages/core
+EnvironmentFile=/opt/sebas/sebas-bot/packages/core/.env
 ExecStart=/usr/bin/node dist/bin/worker.js
 Restart=always
 RestartSec=2
-StartLimitIntervalSec=0
 
 # Processo que roda trabalho pesado (fetch de RSS, chamadas de IA) - isolado do
 # sebas-bot de proposito, pra um job travado nunca competir por memoria com o webhook.

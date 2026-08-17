@@ -36,7 +36,7 @@ Sebas tem um "mordomo" que conversa via `/sebas` no Discord, usando tool calling
 
 Módulos ganham tools declarando um entrypoint `tools` no manifest, mesmo molde de `discordCommands` — ver `SebasModuleTools` em `packages/core/src/core/modules/types.ts`.
 
-Fora de escopo por enquanto: conversa passiva no Discord (menção/DM) exige Gateway (WebSocket), que o core não tem — só o webhook HTTP de `/interactions`. Ver M9 em `MILESTONES.md`.
+Conversa passiva (menção/DM, sem slash command) roda via `bin/gateway.ts` — cliente do Discord Gateway (WebSocket nativo do Node), processo separado (`sebas-gateway.service`), repassa mensagem relevante pro core via `POST /internal/gateway-message`. Precisa do intent privilegiado `MESSAGE_CONTENT` habilitado no Discord Developer Portal do app.
 
 ## Arquitetura do module host
 
@@ -47,9 +47,10 @@ Cada módulo (in-tree ou instalado via marketplace) roda isolado numa `worker_th
 - `runner.ts` / `context-in-worker.ts` — o lado de dentro da worker
 - `installer.ts` / `lifecycle.ts` — ciclo de instalação dinâmica (clone → build → self-test → approve → enable)
 
-## Onde roda em produção (referência — deploy ainda não foi refeito com este repo)
+## Onde roda em produção
 
 - **VM:** `163.176.111.187` (hostname interno `instance-20260804-2203`), usuário SSH `hakor`. Domínio público `163-176-111-187.sslip.io` (Caddy).
 - Atenção: existe outra VM do usuário em `147.15.47.157` (`minecraft---caverna`) — servidor de Minecraft, **não** tem nada do Sebas.
-- Estado levantado em 2026-08-16: roda só como `dist/` compilado (sem fonte, sem `.git`) em `/opt/sebas/bot` + `/opt/sebas/panel`, via systemd (`sebas-bot`, `sebas-worker`, `sebas-panel`). `sebas-worker` estava **inativo**. Detalhes completos, incluindo schema do banco de produção, em `MILESTONES.md` M1–M4.
-- Esse processo em produção roda o contrato de módulo **antigo** (import estático, `db` cru, sem sandbox) — mais simples e mais antigo que o que este repo implementa agora. Redeploy fica pra M8 em `MILESTONES.md`, e precisa da migração de dados de M7 antes.
+- Deploy real deste repo desde 2026-08-17 (M11 em `MILESTONES.md`): clonado via deploy key read-only em `/opt/sebas/sebas-bot`, buildado direto na VM (`npm install && npm run build`), 4 serviços systemd (`sebas-bot`, `sebas-worker`, `sebas-panel`, `sebas-gateway`) apontando pro checkout. Dado real (`sebas.db`) continua fora do checkout, em `/opt/sebas/bot/data` (não versionado).
+- Redeploy: `cd /opt/sebas/sebas-bot && git pull && npm install && npm run build`, depois `sudo systemctl restart sebas-bot sebas-worker sebas-panel sebas-gateway`. Painel precisa recopiar `public/`/`.next/static` pro output standalone depois de rebuildar — ver comentário em `systemd/sebas-panel.service`.
+- `/opt/sebas/bot` e `/opt/sebas/panel` (deploy antigo, manual, sem fonte) ainda existem no disco como rollback de emergência — não removidos ainda, ver M11.
