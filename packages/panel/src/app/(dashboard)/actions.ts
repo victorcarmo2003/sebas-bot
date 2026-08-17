@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/require-session";
 import {
   clearModelCooldown,
+  getSelfUpdateStatus,
   listOpenCodeModels,
+  requestSelfUpdate,
   resolveNotification,
   saveBotParameter,
   saveGithubToken,
@@ -12,7 +14,8 @@ import {
   saveOpenCodeKey,
   selectOpenCodeModel,
   setAutoSwitch,
-  type OpenCodeModel
+  type OpenCodeModel,
+  type SelfUpdateStatus
 } from "@/lib/worker-api";
 
 export async function resolveNotificationAction(id: number): Promise<void> {
@@ -134,6 +137,28 @@ export async function saveBotParameterAction(key: string, value: string): Promis
   try {
     await saveBotParameter(session.discordUserId, key, value);
     return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export async function getSelfUpdateStatusAction(): Promise<SelfUpdateStatus> {
+  const session = await requireSession();
+  try {
+    return await getSelfUpdateStatus(session.discordUserId);
+  } catch {
+    return { phase: "idle", error: null };
+  }
+}
+
+export async function requestSelfUpdateAction(): Promise<{ ok: boolean; error?: string }> {
+  const session = await requireSession();
+  if (session.role !== "owner") {
+    return { ok: false, error: "So o dono pode aplicar o self-update." };
+  }
+  try {
+    const result = await requestSelfUpdate(session.discordUserId);
+    return { ok: result.ok, error: result.error };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }

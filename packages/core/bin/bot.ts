@@ -104,6 +104,7 @@ app.route(
     config,
     host,
     dataDir: dirname(config.dbPath),
+    repoRoot: join(process.cwd(), "..", ".."),
     inTreeModuleIds,
     legacyControllerModuleId,
     toolRegistry,

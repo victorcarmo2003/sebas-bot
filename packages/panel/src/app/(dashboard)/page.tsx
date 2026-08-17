@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { NotificationsPanel } from "@/components/notifications-panel";
 import { Panel } from "@/components/panel";
+import { SelfUpdateProgress } from "@/components/self-update-progress";
 import { requireSession } from "@/lib/require-session";
 import {
   listAdmins,
@@ -78,6 +79,8 @@ export default async function DashboardPage() {
             : "Nenhuma pendência"}
         </span>
       </div>
+
+      <SelfUpdateProgress isOwner={isOwner} />
 
       <NotificationsPanel items={notifications.items} />
 

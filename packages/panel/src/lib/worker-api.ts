@@ -347,6 +347,21 @@ export function applyModuleUpdate(discordUserId: string, moduleId: string): Prom
   return callWorkerApi(discordUserId, `/modules/${moduleId}/update`, { method: "POST" });
 }
 
+export type SelfUpdatePhase = "idle" | "requested" | "pulling" | "installing" | "building" | "copying-static" | "restarting" | "done" | "error";
+
+export interface SelfUpdateStatus {
+  phase: SelfUpdatePhase;
+  error: string | null;
+}
+
+export function getSelfUpdateStatus(discordUserId: string): Promise<SelfUpdateStatus> {
+  return callWorkerApi(discordUserId, "/self-update/status");
+}
+
+export function requestSelfUpdate(discordUserId: string): Promise<{ ok: boolean; error?: string; currentSha?: string; remoteSha?: string }> {
+  return callWorkerApi(discordUserId, "/self-update/request", { method: "POST" });
+}
+
 export interface DiscoveredModule {
   repoFullName: string;
   repoUrl: string;

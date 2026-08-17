@@ -25,6 +25,8 @@ import { installModule } from "../modules/installer.js";
 import { approveModule, disableModule, enableModule, rejectModule, uninstallModule } from "../modules/lifecycle.js";
 import { getModuleInstall, listModuleInstalls, toModuleDetail } from "../modules/marketplace-repo.js";
 import { checkForUpdates, updateModule } from "../modules/updater.js";
+import { checkSelfUpdateAvailable } from "../self-update/check.js";
+import { isSelfUpdateInProgress, readSelfUpdateStatus, requestSelfUpdate } from "../self-update/status.js";
 import { diffAgainstGrantedItems, grantsRequestedByManifest, loadActiveGrantItems } from "../modules/grants.js";
 import type { SebasControllerRequest } from "../modules/types.js";
 import { createMcpServer, deleteMcpServer, listMcpServers, type McpClientManager } from "../mcp/client.js";
@@ -37,6 +39,9 @@ export interface AdminApiDeps {
   config: CoreConfig;
   host: ModuleHost;
   dataDir: string;
+  /** Raiz do checkout do proprio sebas-bot (repo inteiro, nao so packages/core) — usado so pelo
+   * self-update (checkSelfUpdateAvailable le HEAD local/remoto daqui). */
+  repoRoot: string;
   /** Todos os modulos in-tree ativos (changelog-roblox, permissions, ...) — usado pra rotas que
    * precisam agregar/iterar sobre todos eles (ver bin/bot.ts). */
   inTreeModuleIds: string[];
@@ -83,6 +88,7 @@ export function createAdminApiRouter(deps: AdminApiDeps): Hono<Env> {
   registerNotificationsRoutes(app, deps);
   registerAiRoutes(app, deps);
   registerGithubRoutes(app, deps);
+  registerSelfUpdateRoutes(app, deps);
   registerToolsRoutes(app, deps);
   registerMcpRoutes(app, deps);
   registerSettingsRoutes(app, deps);
@@ -499,6 +505,31 @@ function registerSettingsRoutes(app: Hono<Env>, deps: AdminApiDeps): void {
     }
     setBotParameter(deps.db, body.key, body.value);
     return c.json({ ok: true, key: body.key, value: body.value });
+  });
+}
+
+/** Status e' lido direto de um arquivo JSON escrito pelo script root fora do checkout (ver
+ * self-update/status.ts) — nao passa pelo banco, o script nao roda node nenhum. */
+function registerSelfUpdateRoutes(app: Hono<Env>, deps: AdminApiDeps): void {
+  app.get("/self-update/status", async (c) => {
+    const status = await readSelfUpdateStatus(deps.dataDir);
+    return c.json(status);
+  });
+
+  app.post("/self-update/request", async (c) => {
+    const admin = c.get("admin");
+    if (admin.role !== "owner") {
+      return c.json({ error: "only the owner can trigger a self-update" }, 403);
+    }
+    if (await isSelfUpdateInProgress(deps.dataDir)) {
+      return c.json({ ok: false, error: "Ja tem um self-update em andamento." }, 409);
+    }
+    const candidate = await checkSelfUpdateAvailable(deps.repoRoot);
+    if (!candidate) {
+      return c.json({ ok: false, error: "Nenhuma atualizacao disponivel." }, 404);
+    }
+    await requestSelfUpdate(deps.dataDir);
+    return c.json({ ok: true, ...candidate });
   });
 }
 

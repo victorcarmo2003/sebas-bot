@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Cron } from "croner";
 import { loadCoreConfig } from "../src/core/config/env.js";
 import { openDb } from "../src/core/db/client.js";
@@ -7,6 +7,7 @@ import { runMigrations } from "../src/core/db/migrate.js";
 import { logRun } from "../src/core/logging.js";
 import { runAiHealthCheck, runGithubTokenHealthCheck } from "../src/core/notifications/health-check.js";
 import { runModuleUpdateCheckIfDue } from "../src/core/notifications/module-update-check.js";
+import { runSelfUpdateCheck } from "../src/core/notifications/self-update-check.js";
 import { ModuleHost } from "../src/core/modules/host.js";
 import { grantedPermissionsForInTreeModule } from "../src/core/modules/grants.js";
 import { resolveEntryPoints } from "../src/core/modules/installer.js";
@@ -17,6 +18,10 @@ import { claimNext, failJob } from "../src/core/queue/sqlite-queue.js";
 const config = loadCoreConfig();
 runMigrations(config.dbPath);
 const db = openDb(config.dbPath);
+const dataDir = dirname(config.dbPath);
+// packages/core -> raiz do checkout (mesmo WorkingDirectory do systemd, ver bin/bot.ts pro
+// mesmo padrao de resolucao de path relativo a process.cwd()).
+const repoRoot = join(process.cwd(), "..", "..");
 
 const IN_TREE_MODULE_DIR = join(process.cwd(), "..", "modules", "changelog-roblox");
 const inTreeManifest = JSON.parse(readFileSync(join(IN_TREE_MODULE_DIR, "sebas.module.json"), "utf8")) as SebasModuleManifest;
@@ -112,6 +117,11 @@ new Cron("*/5 * * * *", async () => {
   } catch (error) {
     console.error("Module update check failed:", error);
   }
+  try {
+    await runSelfUpdateCheck(db, config, repoRoot, dataDir);
+  } catch (error) {
+    console.error("Self-update check failed:", error);
+  }
 });
 
 console.log("sebas-worker started. Cron registered, queue drain loop running.");
@@ -119,3 +129,4 @@ void drainQueue();
 void runAiHealthCheck(db, config).catch((error) => console.error("Initial AI health check failed:", error));
 void runGithubTokenHealthCheck(db, config).catch((error) => console.error("Initial GitHub token health check failed:", error));
 void runModuleUpdateCheckIfDue(db, config).catch((error) => console.error("Initial module update check failed:", error));
+void runSelfUpdateCheck(db, config, repoRoot, dataDir).catch((error) => console.error("Initial self-update check failed:", error));
