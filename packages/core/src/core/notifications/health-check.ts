@@ -17,6 +17,7 @@ export async function runAiHealthCheck(db: DatabaseSync, config: CoreConfig): Pr
 
   if (!opencode?.apiKey) {
     await raise(db, config, {
+      kind: "ai_provider",
       dedupeKey: AI_SETUP_DEDUPE_KEY,
       title: "Configure um provedor de IA",
       message: "O Sebas precisa de uma chave da OpenCode Zen (gratuita) para formatar changelogs com IA. Sem isso, os posts saem sem formatação.",
@@ -29,6 +30,7 @@ export async function runAiHealthCheck(db: DatabaseSync, config: CoreConfig): Pr
   if (!keyCheck.ok) {
     markAiProviderStatus(db, "opencode", "error", keyCheck.error);
     await raise(db, config, {
+      kind: "ai_provider",
       dedupeKey: AI_INVALID_DEDUPE_KEY,
       title: "Chave da OpenCode invalida",
       message: `A chave configurada para a OpenCode Zen parou de funcionar (${keyCheck.error ?? "erro desconhecido"}). Configure uma nova no painel.`,
@@ -40,6 +42,7 @@ export async function runAiHealthCheck(db: DatabaseSync, config: CoreConfig): Pr
 
   if (!opencode.selectedModel) {
     await raise(db, config, {
+      kind: "ai_provider",
       dedupeKey: AI_SETUP_DEDUPE_KEY,
       title: "Escolha um modelo de IA",
       message: "A chave da OpenCode Zen esta configurada, mas nenhum modelo gratuito foi escolhido ainda.",
@@ -54,6 +57,7 @@ export async function runAiHealthCheck(db: DatabaseSync, config: CoreConfig): Pr
   if (!current || !current.free) {
     markAiProviderStatus(db, "opencode", "error", "modelo selecionado nao esta mais disponivel de graca");
     await raise(db, config, {
+      kind: "ai_provider",
       dedupeKey: AI_MODEL_GONE_DEDUPE_KEY,
       title: "O modelo de IA escolhido nao esta mais gratis",
       message: `A OpenCode Zen trocou os modelos gratuitos e "${opencode.selectedModel}" nao esta mais disponivel de graca. Escolha outro modelo no painel.`,
@@ -77,6 +81,7 @@ const GITHUB_TOKEN_DEDUPE_KEY = "github:token:missing";
 export async function runGithubTokenHealthCheck(db: DatabaseSync, config: CoreConfig): Promise<void> {
   if (!process.env.GITHUB_TOKEN) {
     await raise(db, config, {
+      kind: "github_token",
       dedupeKey: GITHUB_TOKEN_DEDUPE_KEY,
       title: "Configure um token do GitHub",
       message: "Sem GITHUB_TOKEN configurado, a busca de módulos e servidores MCP no GitHub (marketplace) não funciona. Adicione a variável no .env do core e reinicie o processo."
@@ -93,10 +98,10 @@ function resolveByDedupe(db: DatabaseSync, dedupeKey: string): void {
 async function raise(
   db: DatabaseSync,
   config: CoreConfig,
-  input: { dedupeKey: string; title: string; message: string; actionKind?: string }
+  input: { kind: string; dedupeKey: string; title: string; message: string; actionKind?: string }
 ): Promise<void> {
   const { action, isNewOrReopened } = upsertPendingAction(db, {
-    kind: "ai_provider",
+    kind: input.kind,
     severity: "warning",
     title: input.title,
     message: input.message,
