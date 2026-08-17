@@ -10,6 +10,7 @@ import type {
   SebasModuleChronos,
   SebasModuleController,
   SebasModuleDiscordCommands,
+  SebasModulePermissionGate,
   SebasModuleTools
 } from "./types.js";
 
@@ -32,6 +33,7 @@ const controllerPromise = loadDefault<SebasModuleController>(data.entryPoints.co
 const chronosPromise = loadDefault<SebasModuleChronos>(data.entryPoints.chronos);
 const discordCommandsPromise = loadDefault<SebasModuleDiscordCommands>(data.entryPoints.discordCommands);
 const toolsPromise = loadDefault<SebasModuleTools>(data.entryPoints.tools);
+const permissionGatePromise = loadDefault<SebasModulePermissionGate>(data.entryPoints.permissionGate);
 
 function reply(callId: string, ok: true, result: unknown): void;
 function reply(callId: string, ok: false, error: string): void;
@@ -97,6 +99,13 @@ async function handleMessage(message: HostToWorkerMessage): Promise<void> {
       case "list-tools": {
         const tools = await toolsPromise;
         reply(message.callId, true, tools?.tools ?? []);
+        return;
+      }
+      case "invoke-permission-gate": {
+        const gate = await permissionGatePromise;
+        if (!gate) throw new Error("Module has no permissionGate entrypoint.");
+        const result = await gate.checkGate(ctx, message.req);
+        reply(message.callId, true, result);
         return;
       }
     }

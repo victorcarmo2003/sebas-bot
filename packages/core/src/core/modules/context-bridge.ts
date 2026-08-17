@@ -236,7 +236,7 @@ export function createContextBridge(deps: ContextBridgeDeps) {
         if (!deps.granted.hasAiProvider) {
           return { ok: false, error: `Module "${deps.moduleId}" does not have an AI provider dependency granted.` };
         }
-        const provider = resolveActiveAiProvider(deps.db);
+        const provider = resolveActiveAiProvider(deps.db, deps.config);
         if (!provider) {
           return { ok: false, error: "No AI provider is configured yet." };
         }

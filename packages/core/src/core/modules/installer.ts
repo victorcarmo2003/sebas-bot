@@ -144,13 +144,15 @@ export function resolveEntryPoints(moduleDir: string, manifest: SebasModuleManif
   chronos?: string;
   discordCommands?: string;
   tools?: string;
+  permissionGate?: string;
 } {
   const toAbsolute = (relative: string | undefined) => (relative ? resolve(moduleDir, relative) : undefined);
   return {
     controller: toAbsolute(manifest.entryPoints.controller),
     chronos: toAbsolute(manifest.entryPoints.chronos),
     discordCommands: toAbsolute(manifest.entryPoints.discordCommands),
-    tools: toAbsolute(manifest.entryPoints.tools)
+    tools: toAbsolute(manifest.entryPoints.tools),
+    permissionGate: toAbsolute(manifest.entryPoints.permissionGate)
   };
 }
 

@@ -29,6 +29,13 @@ type TimelineEvent =
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+// Fora do componente pra nao violar a regra de pureza de render (Date.now() e' impuro
+// dentro de um Component/Hook segundo o eslint-plugin-react-hooks novo).
+function countErrorsInLastDay(logs: LogRow[]): number {
+  const now = Date.now();
+  return logs.filter((row) => row.level === "error" && now - new Date(row.createdAt).getTime() < DAY_MS).length;
+}
+
 export default async function DashboardPage() {
   const session = await requireSession();
   const isOwner = session.role === "owner";
@@ -47,9 +54,7 @@ export default async function DashboardPage() {
   ]);
 
   const pendingCount = notifications.items.length;
-  const errorsLast24h = logs.items.filter(
-    (row) => row.level === "error" && Date.now() - new Date(row.createdAt).getTime() < DAY_MS
-  ).length;
+  const errorsLast24h = countErrorsInLastDay(logs.items);
 
   const timeline: TimelineEvent[] = [
     ...history.items.map((row): TimelineEvent => ({ kind: "post", at: row.postedAt, row })),

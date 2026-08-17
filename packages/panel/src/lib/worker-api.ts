@@ -172,11 +172,42 @@ export interface AiProviderStatus {
   status: "unconfigured" | "ok" | "error";
   lastCheckedAt: string | null;
   lastError: string | null;
+  /** Extensao aditiva ao contrato original: vem da mesma linha de ai_provider_settings
+   * que a migration 0007 (auto_switch_enabled) passa a expor via /ai/status. */
+  autoSwitchEnabled: boolean;
 }
 
 export interface OpenCodeModel {
   id: string;
   free: boolean;
+}
+
+export interface ModelPriorityItem {
+  modelId: string;
+  position: number;
+  rateLimitedUntil: string | null;
+}
+
+export interface BotParameterRow {
+  key: string;
+  value: string | null;
+  updatedAt: string | null;
+}
+
+export type PermissionSurface = "dm" | "mention" | "action";
+export type PermissionMode = "everyone" | "whitelist" | "blacklist";
+
+export interface PermissionSurfaceConfig {
+  mode: PermissionMode;
+  userIds: string[];
+  roleIds: string[];
+}
+
+export interface PermissionsModuleSettings {
+  dm: PermissionSurfaceConfig;
+  mention: PermissionSurfaceConfig;
+  action: PermissionSurfaceConfig;
+  enabledTools: string[];
 }
 
 export class WorkerApiError extends Error {
@@ -346,6 +377,9 @@ export function uninstallModule(discordUserId: string, moduleId: string): Promis
   return callWorkerApi(discordUserId, `/modules/${moduleId}`, { method: "DELETE" });
 }
 
+/** changelog-roblox continua no fallback legado sem prefixo de moduleId (registerInTreeControllerFallback
+ * no core, catch-all "/*" -> legacyControllerModuleId) — path bate exatamente com o que o modulo
+ * ja reconhecia antes da generalizacao multi-modulo, sem precisar mudar o modulo em si. */
 export function getChangelogModuleSettings(discordUserId: string): Promise<ModuleSettings> {
   return callWorkerApi(discordUserId, "/settings");
 }
@@ -355,6 +389,48 @@ export function saveChangelogModuleSettings(discordUserId: string, input: Module
     method: "PUT",
     body: JSON.stringify(input)
   });
+}
+
+/** O modulo permissions expoe rotas granulares (ver packages/modules/permissions/src/controller.ts)
+ * sob /modules/permissions/controller/* — nao existe um "/settings" combinado do lado do core.
+ * Essas duas funcoes agregam/desagregam pra manter o shape unico que o painel consome. */
+export function getPermissionsModuleSettings(discordUserId: string): Promise<PermissionsModuleSettings> {
+  return Promise.all([
+    callWorkerApi<{ items: Array<{ surface: PermissionSurface } & PermissionSurfaceConfig> }>(
+      discordUserId,
+      "/modules/permissions/controller/gates"
+    ),
+    callWorkerApi<{ items: string[] }>(discordUserId, "/modules/permissions/controller/tools/allowlist")
+  ]).then(([gates, allowlist]) => {
+    const bySurface = new Map(gates.items.map((item) => [item.surface, item]));
+    const fallback: PermissionSurfaceConfig = { mode: "whitelist", userIds: [], roleIds: [] };
+    const pick = (surface: PermissionSurface): PermissionSurfaceConfig => {
+      const found = bySurface.get(surface);
+      return found ? { mode: found.mode, userIds: found.userIds, roleIds: found.roleIds } : fallback;
+    };
+    return { dm: pick("dm"), mention: pick("mention"), action: pick("action"), enabledTools: allowlist.items };
+  });
+}
+
+export async function savePermissionsModuleSettings(
+  discordUserId: string,
+  input: PermissionsModuleSettings
+): Promise<PermissionsModuleSettings> {
+  const putGate = (surface: PermissionSurface, config: PermissionSurfaceConfig) =>
+    callWorkerApi(discordUserId, `/modules/permissions/controller/gates/${surface}`, {
+      method: "PUT",
+      body: JSON.stringify(config)
+    });
+  await Promise.all([
+    putGate("dm", input.dm),
+    putGate("mention", input.mention),
+    putGate("action", input.action),
+    callWorkerApi(discordUserId, "/modules/permissions/controller/tools/allowlist", {
+      method: "PUT",
+      body: JSON.stringify({ items: input.enabledTools })
+    })
+  ]);
+  return input;
 }
 
 export function listAdmins(discordUserId: string): Promise<{ items: AdminRow[] }> {
@@ -424,5 +500,42 @@ export function saveGithubToken(discordUserId: string, token: string): Promise<{
   return callWorkerApi(discordUserId, "/github/token", {
     method: "POST",
     body: JSON.stringify({ token })
+  });
+}
+
+export function listModelPriority(discordUserId: string): Promise<{ items: ModelPriorityItem[] }> {
+  return callWorkerApi(discordUserId, "/ai/opencode/models/priority");
+}
+
+/** Nova ordem completa — o backend faz replace-all por posicao, entao a lista enviada
+ * precisa conter todos os modelos que devem permanecer na prioridade. */
+export function saveModelPriority(discordUserId: string, modelIds: string[]): Promise<{ ok: boolean }> {
+  return callWorkerApi(discordUserId, "/ai/opencode/models/priority", {
+    method: "POST",
+    body: JSON.stringify({ modelIds })
+  });
+}
+
+export function clearModelCooldown(discordUserId: string, modelId: string): Promise<{ ok: boolean }> {
+  return callWorkerApi(discordUserId, `/ai/opencode/models/${encodeURIComponent(modelId)}/clear-cooldown`, {
+    method: "POST"
+  });
+}
+
+export function setAutoSwitch(discordUserId: string, enabled: boolean): Promise<{ ok: boolean }> {
+  return callWorkerApi(discordUserId, "/ai/opencode/auto-switch", {
+    method: "POST",
+    body: JSON.stringify({ enabled })
+  });
+}
+
+export function getBotParameters(discordUserId: string): Promise<{ items: BotParameterRow[] }> {
+  return callWorkerApi(discordUserId, "/settings/parameters");
+}
+
+export function saveBotParameter(discordUserId: string, key: string, value: string): Promise<{ ok: boolean }> {
+  return callWorkerApi(discordUserId, "/settings/parameters", {
+    method: "POST",
+    body: JSON.stringify({ key, value })
   });
 }

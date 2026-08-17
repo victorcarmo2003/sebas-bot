@@ -7,6 +7,9 @@ export interface AgentLoopInput {
   systemPrompt?: string;
   userPrompt: string;
   maxIterations?: number;
+  /** Tools que esse turno pode usar, vindo do permission gate (modulo "permissions").
+   * "all" (default quando ausente, preserva o comportamento de quem ainda nao passa esse campo). */
+  allowedTools?: string[] | "all";
 }
 
 export interface AgentLoopResult {
@@ -25,9 +28,12 @@ export interface AgentLoopResult {
  */
 export async function runAgentLoop(provider: AiProvider, registry: ToolRegistry, input: AgentLoopInput): Promise<AgentLoopResult> {
   const qualifiedTools = await registry.listQualifiedTools();
+  const allowedTools = input.allowedTools ?? "all";
+  const visibleTools =
+    allowedTools === "all" ? qualifiedTools : qualifiedTools.filter((tool) => allowedTools.includes(tool.qualifiedName));
   // A IA ve e chama pelo nome QUALIFICADO (ex. "module:changelog-roblox:buscar_changelog"),
   // pra dar pro loop rotear a chamada de volta via registry.callQualifiedTool sem ambiguidade.
-  const tools = qualifiedTools.map((tool) => ({ ...tool.definition, name: tool.qualifiedName }));
+  const tools = visibleTools.map((tool) => ({ ...tool.definition, name: tool.qualifiedName }));
 
   const messages: AiChatMessage[] = [
     ...(input.systemPrompt ? [{ role: "system" as const, content: input.systemPrompt }] : []),

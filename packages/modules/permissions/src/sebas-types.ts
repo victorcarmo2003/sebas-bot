@@ -1,6 +1,5 @@
-/** Contrato publico do Sebas para modulos. Espelha sebas-types.ts, que os modulos vendorizam
- * como um SDK de terceiro — o core e' quem implementa esse contrato de verdade (ver context-bridge.ts). */
-
+/** Contrato publico do Sebas (core/modules/sdk-types.ts). Modulos nao importam do core —
+ * vendorizam esse arquivo, igual qualquer SDK de terceiro. */
 export interface SebasModuleLogger {
   info(message: string, meta?: Record<string, unknown>): void;
   warn(message: string, meta?: Record<string, unknown>): void;
@@ -19,10 +18,7 @@ export interface SebasModuleConfig {
   set(key: string, value: unknown): Promise<void>;
 }
 
-export type SebasModuleFetch = (
-  url: string,
-  init?: { method?: string; headers?: Record<string, string>; body?: string }
-) => Promise<{
+export type SebasModuleFetch = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }) => Promise<{
   status: number;
   headers: Record<string, string>;
   text: () => Promise<string>;
@@ -104,63 +100,8 @@ export interface SebasModuleController {
   selfTest(ctx: SebasModuleContext): Promise<void>;
 }
 
-export interface SebasModuleChronos {
-  run(ctx: SebasModuleContext): Promise<void>;
-}
-
-export interface SebasModuleDiscordCommandDefinition {
-  name: string;
-  description: string;
-}
-
-export interface SebasModuleDiscordCommands {
-  commands: SebasModuleDiscordCommandDefinition[];
-  handleCommand(ctx: SebasModuleContext, commandName: string, interaction: unknown): Promise<{ content: string } | void>;
-}
-
-/** Definicao de tool no formato de function-calling OpenAI-compatible (o que OpenCode Zen/DeepSeek
- * e o fine-tune do Qwen tambem falam) — mesmo schema que vai dentro de `tools` no request de chat. */
-export interface SebasToolDefinition {
-  name: string;
-  description: string;
-  /** JSON Schema de objeto (campo "parameters" do function-calling). */
-  parameters: Record<string, unknown>;
-}
-
-export interface SebasToolCallResult {
-  ok: boolean;
-  result?: unknown;
-  error?: string;
-}
-
-export interface SebasModuleTools {
-  tools: SebasToolDefinition[];
-  callTool(ctx: SebasModuleContext, name: string, args: Record<string, unknown>): Promise<SebasToolCallResult>;
-}
-
-/** Permissoes declaradas no manifest (sebas.module.json) — o que o modulo PODE pedir. */
-export interface ModulePermissions {
-  adminScopes?: string[];
-  providesScopes?: string[];
-  network?: { domains: string[] };
-  storage?: { kind?: "kv" | "sql"; maxMb: number };
-  discordPermissions?: string[];
-}
-
-export type ModuleCapability =
-  | "controller"
-  | "cron"
-  | "ui"
-  | "discordCommands"
-  | "tools"
-  | "aiProvider"
-  | "storage"
-  | "webhook"
-  | "permissionGate";
-
-/** Requisicao do gate de permissao: quem esta falando, de onde, e se pode falar/executar acao.
- * "slash_command" e "mention" sao tratados como o mesmo eixo de "posso falar" pelo modulo
- * permissions (so muda o canal de entrada) — ver checkGate em packages/modules/permissions. */
+/** Requisicao do gate de permissao — quem esta falando, de onde, e se e' o dono. "slash_command"
+ * e "mention" sao tratados como o mesmo eixo de "posso falar" por este modulo (ver permission-gate.ts). */
 export interface PermissionGateRequest {
   discordUserId: string;
   guildId: string | null;
@@ -176,31 +117,4 @@ export interface PermissionGateResult {
 
 export interface SebasModulePermissionGate {
   checkGate(ctx: SebasModuleContext, req: PermissionGateRequest): Promise<PermissionGateResult>;
-}
-
-export interface SebasModuleManifest {
-  schemaVersion: 1;
-  id: string;
-  name: string;
-  description?: string;
-  version: string;
-  sebasCompat: string;
-  repoUrl: string;
-  capabilities: ModuleCapability[];
-  entryPoints: Record<string, string | undefined>;
-  cron?: { schedule: string; timeoutMs?: number };
-  discordCommands?: { commands: string[] };
-  webhook?: { publicPath: string };
-  permissions?: ModulePermissions;
-  dependencies?: { aiProvider?: string };
-  resources: { maxMemoryMb: number };
-}
-
-/** O que foi de fato concedido a um modulo instalado — subconjunto de ModulePermissions,
- * um item por valor concedido (ver migration 0004_module_marketplace.sql). */
-export type ModuleGrantType = "adminScope" | "providesScope" | "networkDomain" | "storage" | "discordPermission" | "aiProviderDependency";
-
-export interface PermissionDiffItem {
-  grantType: ModuleGrantType;
-  grantValue: string;
 }

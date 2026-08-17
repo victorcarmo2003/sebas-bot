@@ -1,8 +1,20 @@
 import { Hono } from "hono";
+import type { Context } from "hono";
 import type { DatabaseSync } from "node:sqlite";
 import type { CoreConfig } from "../config/env.js";
 import { listOpenCodeModels, testOpenCodeKey } from "../ai/opencode-client.js";
-import { getAiProviderSettings, saveAiProviderKey, selectAiProviderModel } from "../ai/settings-repo.js";
+import {
+  clearModelCooldown,
+  getAiProviderSettings,
+  listBotParameters,
+  listProviderModels,
+  markAiProviderStatus,
+  saveAiProviderKey,
+  saveProviderModelOrder,
+  selectAiProviderModel,
+  setAutoSwitch,
+  setBotParameter
+} from "../ai/settings-repo.js";
 import { testGithubToken } from "../github/client.js";
 import { getGithubToken, saveGithubToken } from "../github/settings-repo.js";
 import { runAiHealthCheck, runGithubTokenHealthCheck } from "../notifications/health-check.js";
@@ -24,9 +36,14 @@ export interface AdminApiDeps {
   config: CoreConfig;
   host: ModuleHost;
   dataDir: string;
-  /** Modulo in-tree cujo controller e' montado direto na raiz da admin API (paridade com o
-   * comportamento atual: /guilds, /settings, /history sem prefixo de moduleId). */
-  inTreeModuleId: string;
+  /** Todos os modulos in-tree ativos (changelog-roblox, permissions, ...) — usado pra rotas que
+   * precisam agregar/iterar sobre todos eles (ver bin/bot.ts). */
+  inTreeModuleIds: string[];
+  /** Modulo cujo controller e' montado direto na raiz da admin API sem prefixo de moduleId —
+   * mantem compat com o painel atual (/guilds, /settings, /history). Outros modulos in-tree
+   * (ex. permissions) ficam acessiveis via /modules/:moduleId/controller/* (ver
+   * registerInTreeControllerFallback mais abaixo). */
+  legacyControllerModuleId: string;
   toolRegistry: ToolRegistry;
   mcpClientManager: McpClientManager;
 }
@@ -67,6 +84,7 @@ export function createAdminApiRouter(deps: AdminApiDeps): Hono<Env> {
   registerGithubRoutes(app, deps);
   registerToolsRoutes(app, deps);
   registerMcpRoutes(app, deps);
+  registerSettingsRoutes(app, deps);
   registerInTreeControllerFallback(app, deps);
 
   return app;
@@ -254,9 +272,10 @@ function registerAiRoutes(app: Hono<Env>, deps: AdminApiDeps): void {
             selectedModel: opencode.selectedModel,
             status: opencode.status,
             lastCheckedAt: opencode.lastCheckedAt,
-            lastError: opencode.lastError
+            lastError: opencode.lastError,
+            autoSwitchEnabled: opencode.autoSwitchEnabled
           }
-        : { providerId: "opencode", hasApiKey: false, status: "unconfigured", selectedModel: null }
+        : { providerId: "opencode", hasApiKey: false, status: "unconfigured", selectedModel: null, autoSwitchEnabled: true }
     });
   });
 
@@ -302,6 +321,51 @@ function registerAiRoutes(app: Hono<Env>, deps: AdminApiDeps): void {
     selectAiProviderModel(deps.db, "opencode", body.model);
     await runAiHealthCheck(deps.db, deps.config);
     return c.json({ ok: true, model: body.model });
+  });
+
+  app.get("/ai/opencode/models/priority", (c) => {
+    return c.json({ items: listProviderModels(deps.db, "opencode") });
+  });
+
+  app.post("/ai/opencode/models/priority", async (c) => {
+    const admin = c.get("admin");
+    if (admin.role !== "owner") {
+      return c.json({ error: "only the owner can configure the AI provider" }, 403);
+    }
+    const body = await c.req.json();
+    if (!Array.isArray(body.modelIds) || body.modelIds.some((id: unknown) => typeof id !== "string")) {
+      return c.json({ error: "modelIds must be an array of strings" }, 400);
+    }
+    saveProviderModelOrder(deps.db, "opencode", body.modelIds);
+    if (body.modelIds.length > 0) {
+      // Ter uma lista de prioridade configurada ja conta como "provider pronto pra uso" — o
+      // fluxo novo (drag-and-drop) nao passa mais por selectAiProviderModel (que marcava status
+      // 'ok' no fluxo legado de modelo unico).
+      markAiProviderStatus(deps.db, "opencode", "ok");
+    }
+    return c.json({ ok: true, items: listProviderModels(deps.db, "opencode") });
+  });
+
+  app.post("/ai/opencode/models/:modelId/clear-cooldown", (c) => {
+    const admin = c.get("admin");
+    if (admin.role !== "owner") {
+      return c.json({ error: "only the owner can configure the AI provider" }, 403);
+    }
+    clearModelCooldown(deps.db, "opencode", c.req.param("modelId"));
+    return c.json({ ok: true });
+  });
+
+  app.post("/ai/opencode/auto-switch", async (c) => {
+    const admin = c.get("admin");
+    if (admin.role !== "owner") {
+      return c.json({ error: "only the owner can configure the AI provider" }, 403);
+    }
+    const body = await c.req.json();
+    if (typeof body.enabled !== "boolean") {
+      return c.json({ error: "enabled must be a boolean" }, 400);
+    }
+    setAutoSwitch(deps.db, "opencode", body.enabled);
+    return c.json({ ok: true, enabled: body.enabled });
   });
 }
 
@@ -385,47 +449,93 @@ function registerMcpRoutes(app: Hono<Env>, deps: AdminApiDeps): void {
   });
 }
 
-/** Rotas do modulo in-tree (changelog-roblox: /guilds, /settings, /history, ...) sem prefixo de
+/** GET/POST genericos de key-value pra comportamento do bot (persona override, defaults de IA,
+ * cooldown de rate limit — chave "rate_limit_cooldown_hours" e' a que opencode-fallback.ts le).
+ * Generico de proposito: o backend nao precisa conhecer o conjunto de chaves que o painel usa. */
+function registerSettingsRoutes(app: Hono<Env>, deps: AdminApiDeps): void {
+  app.get("/settings/parameters", (c) => {
+    return c.json({ items: listBotParameters(deps.db) });
+  });
+
+  app.post("/settings/parameters", async (c) => {
+    const admin = c.get("admin");
+    if (admin.role !== "owner") {
+      return c.json({ error: "only the owner can configure bot parameters" }, 403);
+    }
+    const body = await c.req.json();
+    if (typeof body.key !== "string" || !body.key) {
+      return c.json({ error: "key is required" }, 400);
+    }
+    if (typeof body.value !== "string") {
+      return c.json({ error: "value must be a string" }, 400);
+    }
+    setBotParameter(deps.db, body.key, body.value);
+    return c.json({ ok: true, key: body.key, value: body.value });
+  });
+}
+
+function stripPathPrefix(pathname: string, prefix: string): string {
+  return pathname.startsWith(prefix) ? pathname.slice(prefix.length) || "/" : pathname;
+}
+
+async function forwardToModuleController(c: Context<Env>, deps: AdminApiDeps, moduleId: string, stripPrefix: string): Promise<Response> {
+  if (!deps.host.isRunning(moduleId)) {
+    return c.json({ error: "not found" }, 404);
+  }
+  const url = new URL(c.req.url);
+  const query: Record<string, string> = {};
+  url.searchParams.forEach((value, key) => {
+    query[key] = value;
+  });
+  const headers: Record<string, string> = {};
+  c.req.raw.headers.forEach((value, key) => {
+    headers[key] = value;
+  });
+
+  let body: unknown = null;
+  if (c.req.method !== "GET" && c.req.method !== "HEAD") {
+    body = await c.req.json().catch(() => null);
+  }
+
+  const req: SebasControllerRequest = {
+    method: c.req.method,
+    path: stripPathPrefix(url.pathname, stripPrefix),
+    query,
+    headers,
+    body
+  };
+
+  try {
+    const response = await deps.host.handleControllerRequest(moduleId, req);
+    return new Response(JSON.stringify(response.body), {
+      status: response.status,
+      headers: { "content-type": "application/json" }
+    });
+  } catch (error) {
+    return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
+  }
+}
+
+/** Superficie generica de controller pra qualquer modulo in-tree (ex. /modules/permissions/controller/gates/dm)
+ * — o path relativo (apos ".../controller") vira req.path pro handleRequest do modulo, exatamente
+ * como o fallback legado abaixo faz pra changelog-roblox sem prefixo nenhum. */
+function registerModuleControllerRoutes(app: Hono<Env>, deps: AdminApiDeps): void {
+  app.all("/modules/:moduleId/controller/*", async (c) => {
+    const moduleId = c.req.param("moduleId");
+    return forwardToModuleController(c, deps, moduleId, `/api/admin/modules/${moduleId}/controller`);
+  });
+}
+
+/** Rotas do modulo legado (changelog-roblox: /guilds, /settings, /history, ...) sem prefixo de
  * moduleId — preserva o contrato que o painel ja consome (worker-api.ts). Modulos instalados via
  * marketplace nao passam por aqui; eles ainda nao tem uma superficie de admin API generica
- * exposta ao painel (fica pra quando o primeiro modulo de terceiro precisar de uma). */
+ * exposta ao painel (fica pra quando o primeiro modulo de terceiro precisar de uma alem do
+ * /modules/:moduleId/controller/* acima). */
 function registerInTreeControllerFallback(app: Hono<Env>, deps: AdminApiDeps): void {
+  registerModuleControllerRoutes(app, deps);
+
   app.all("/*", async (c) => {
-    if (!deps.host.isRunning(deps.inTreeModuleId)) {
-      return c.json({ error: "not found" }, 404);
-    }
-    const url = new URL(c.req.url);
-    const query: Record<string, string> = {};
-    url.searchParams.forEach((value, key) => {
-      query[key] = value;
-    });
-    const headers: Record<string, string> = {};
-    c.req.raw.headers.forEach((value, key) => {
-      headers[key] = value;
-    });
-
-    let body: unknown = null;
-    if (c.req.method !== "GET" && c.req.method !== "HEAD") {
-      body = await c.req.json().catch(() => null);
-    }
-
-    const req: SebasControllerRequest = {
-      method: c.req.method,
-      path: url.pathname.replace(/^\/api\/admin/, ""),
-      query,
-      headers,
-      body
-    };
-
-    try {
-      const response = await deps.host.handleControllerRequest(deps.inTreeModuleId, req);
-      return new Response(JSON.stringify(response.body), {
-        status: response.status,
-        headers: { "content-type": "application/json" }
-      });
-    } catch (error) {
-      return c.json({ error: error instanceof Error ? error.message : String(error) }, 502);
-    }
+    return forwardToModuleController(c, deps, deps.legacyControllerModuleId, "/api/admin");
   });
 }
 

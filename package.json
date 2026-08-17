@@ -5,10 +5,11 @@
   "workspaces": [
     "packages/core",
     "packages/panel",
-    "packages/modules/changelog-roblox"
+    "packages/modules/changelog-roblox",
+    "packages/modules/permissions"
   ],
   "scripts": {
-    "build": "npm run build --workspace=@sebas-bot/module-changelog-roblox && npm run build --workspace=@sebas-bot/core && npm run build --workspace=@sebas-bot/panel",
+    "build": "npm run build --workspace=@sebas-bot/module-changelog-roblox && npm run build --workspace=@sebas-bot/module-permissions && npm run build --workspace=@sebas-bot/core && npm run build --workspace=@sebas-bot/panel",
     "migrate": "npm run migrate --workspace=@sebas-bot/core"
   },
   "engines": {

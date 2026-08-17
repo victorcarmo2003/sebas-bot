@@ -10,7 +10,8 @@ const NAV_ITEMS: Array<{ href: string; label: string; scope?: PermissionScope }>
   { href: "/history", label: "Histórico", scope: "history:view" },
   { href: "/logs", label: "Logs", scope: "logs:view" },
   { href: "/modules", label: "Módulos", scope: "modules:manage" },
-  { href: "/admins", label: "Admins", scope: "admins:manage" }
+  { href: "/admins", label: "Admins", scope: "admins:manage" },
+  { href: "/settings", label: "Configurações" }
 ];
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {

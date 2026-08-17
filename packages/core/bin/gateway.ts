@@ -55,6 +55,9 @@ interface MessageCreateData {
   content: string;
   author: DiscordUser;
   mentions?: DiscordUser[];
+  /** So presente em MESSAGE_CREATE dentro de guild — o Discord ja manda os cargos do autor de
+   * graca aqui, sem precisar de uma chamada extra a API pra resolver permissao (ver bin/bot.ts). */
+  member?: { roles: string[] };
 }
 
 let ws: WebSocket | null = null;
@@ -185,7 +188,13 @@ async function handleMessageCreate(message: MessageCreateData): Promise<void> {
     const response = await fetch(`http://127.0.0.1:${config.botPort}/internal/gateway-message`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${process.env.ADMIN_API_SECRET ?? ""}` },
-      body: JSON.stringify({ channelId: message.channel_id, content })
+      body: JSON.stringify({
+        channelId: message.channel_id,
+        content,
+        authorId: message.author.id,
+        guildId: message.guild_id ?? null,
+        roleIds: message.member?.roles ?? []
+      })
     });
     if (!response.ok) {
       console.error(`Falha ao repassar mensagem pro bot: HTTP ${response.status}`);

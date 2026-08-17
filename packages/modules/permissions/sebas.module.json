@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "permissions",
+  "name": "Permissões",
+  "description": "Controla quem pode conversar com o Sebas (DM/menção/slash) e quais tools ele pode executar.",
+  "version": "1.0.0",
+  "sebasCompat": "^1.0.0",
+  "repoUrl": "https://github.com/victorcarmo2003/sebas-module-permissions",
+  "capabilities": ["controller", "permissionGate"],
+  "entryPoints": {
+    "controller": "dist/controller.js",
+    "permissionGate": "dist/permission-gate.js"
+  },
+  "permissions": {
+    "storage": { "kind": "sql", "maxMb": 8 }
+  },
+  "resources": { "maxMemoryMb": 48 }
+}

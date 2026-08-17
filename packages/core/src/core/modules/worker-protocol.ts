@@ -2,7 +2,7 @@
  * cada modulo). Duas direcoes: host -> worker manda "invoke" (rodar um entrypoint), worker -> host
  * manda "ctx-call" (o modulo chamando algo do SebasModuleContext, que so o host pode executar de verdade). */
 
-import type { SebasControllerRequest, SebasControllerResponse } from "./types.js";
+import type { PermissionGateRequest, PermissionGateResult, SebasControllerRequest, SebasControllerResponse } from "./types.js";
 
 export interface WorkerRunnerData {
   moduleId: string;
@@ -11,6 +11,7 @@ export interface WorkerRunnerData {
     chronos?: string;
     discordCommands?: string;
     tools?: string;
+    permissionGate?: string;
   };
 }
 
@@ -22,6 +23,7 @@ export type HostToWorkerMessage =
   | { type: "list-discord-commands"; callId: string }
   | { type: "invoke-tool"; callId: string; toolName: string; args: Record<string, unknown> }
   | { type: "list-tools"; callId: string }
+  | { type: "invoke-permission-gate"; callId: string; req: PermissionGateRequest }
   | { type: "ctx-reply"; callId: string; ok: true; result: unknown }
   | { type: "ctx-reply"; callId: string; ok: false; error: string };
 
@@ -30,4 +32,4 @@ export type WorkerToHostMessage =
   | { type: "invoke-result"; callId: string; ok: false; error: string }
   | { type: "ctx-call"; callId: string; fn: string; args: unknown[] };
 
-export type { SebasControllerRequest, SebasControllerResponse };
+export type { PermissionGateRequest, PermissionGateResult, SebasControllerRequest, SebasControllerResponse };

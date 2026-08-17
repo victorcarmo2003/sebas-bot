@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
-import { listAiProviderSettings } from "./settings-repo.js";
-import { runOpenCodeChat } from "./opencode-client.js";
+import type { CoreConfig } from "../config/env.js";
+import { listAiProviderSettings, listProviderModels } from "./settings-repo.js";
+import { runOpenCodeChatWithFallback } from "./opencode-fallback.js";
 import { runOpenAiChat } from "./openai-client.js";
 import type { AiProvider } from "./types.js";
 
@@ -9,16 +10,18 @@ import type { AiProvider } from "./types.js";
  * default recomendado) -> OpenAI (se o dono preferir pagar por um modelo proprio) -> null
  * (caller cai no fallback "local", sem IA, que ja existe no formatter do modulo).
  */
-export function resolveActiveAiProvider(db: DatabaseSync): AiProvider | null {
+export function resolveActiveAiProvider(db: DatabaseSync, config: CoreConfig): AiProvider | null {
   const settings = listAiProviderSettings(db);
 
   const opencode = settings.find((row) => row.providerId === "opencode");
-  if (opencode?.status === "ok" && opencode.apiKey && opencode.selectedModel) {
+  // selectedModel (fluxo legado) OU uma lista de prioridade ja configurada (migration 0007)
+  // contam como "modelo configurado" — quem so usou a tela nova nunca chama selectAiProviderModel.
+  const hasOpencodeModel = Boolean(opencode?.selectedModel) || (opencode ? listProviderModels(db, "opencode").length > 0 : false);
+  if (opencode?.status === "ok" && opencode.apiKey && hasOpencodeModel) {
     const apiKey = opencode.apiKey;
-    const model = opencode.selectedModel;
     return {
       id: "opencode",
-      run: (request) => runOpenCodeChat(apiKey, model, request)
+      run: (request) => runOpenCodeChatWithFallback(db, config, apiKey, request)
     };
   }
 

@@ -79,7 +79,12 @@ export async function runOpenCodeChat(apiKey: string, model: string, request: Ai
     });
     if (!response.ok) {
       const text = await response.text().catch(() => "");
-      return { ok: false, error: `OpenCode Zen failed with ${response.status}: ${text.slice(0, 400)}`, providerId: "opencode" };
+      return {
+        ok: false,
+        error: `OpenCode Zen failed with ${response.status}: ${text.slice(0, 400)}`,
+        providerId: "opencode",
+        rateLimited: response.status === 429
+      };
     }
     const data = (await response.json()) as {
       choices?: Array<{ message?: { content?: unknown; tool_calls?: Array<{ id?: unknown; function?: { name?: unknown; arguments?: unknown } }> } }>;

@@ -41,6 +41,9 @@ export interface AiChatResult {
   toolCalls?: AiToolCall[];
   error?: string;
   providerId: string;
+  /** true quando o erro veio de HTTP 429 — sinaliza pro fallback engine (opencode-fallback.ts)
+   * que vale a pena tentar o proximo modelo da lista, em vez de repetir o mesmo erro. */
+  rateLimited?: boolean;
 }
 
 export interface AiProvider {

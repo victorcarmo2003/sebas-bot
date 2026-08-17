@@ -5,6 +5,8 @@ import type { CoreConfig } from "../config/env.js";
 import { createContextBridge, type GrantedPermissions } from "./context-bridge.js";
 import type { HostToWorkerMessage, WorkerRunnerData, WorkerToHostMessage } from "./worker-protocol.js";
 import type {
+  PermissionGateRequest,
+  PermissionGateResult,
   SebasControllerRequest,
   SebasControllerResponse,
   SebasModuleDiscordCommandDefinition,
@@ -109,6 +111,10 @@ export class ModuleHost {
 
   async callTool(moduleId: string, toolName: string, args: Record<string, unknown>): Promise<SebasToolCallResult> {
     return (await this.call(moduleId, { type: "invoke-tool", callId: randomUUID(), toolName, args })) as SebasToolCallResult;
+  }
+
+  async checkPermissionGate(moduleId: string, req: PermissionGateRequest): Promise<PermissionGateResult> {
+    return (await this.call(moduleId, { type: "invoke-permission-gate", callId: randomUUID(), req })) as PermissionGateResult;
   }
 
   private call(moduleId: string, message: Extract<HostToWorkerMessage, { type: string }>): Promise<unknown> {
