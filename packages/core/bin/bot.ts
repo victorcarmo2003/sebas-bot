@@ -240,7 +240,17 @@ async function runSebasReply(userMessage: string, allowedTools: PermissionGateRe
   const systemPrompt = persona.ok ? (persona.result as { content: string }).content : undefined;
 
   const result = await runAgentLoop(provider, toolRegistry, { systemPrompt, userPrompt: userMessage, allowedTools });
-  return result.ok ? result.text || "Não tenho uma resposta pra isso." : `Não consegui responder: ${result.error}`;
+  if (result.ok) return result.text || "Não tenho uma resposta pra isso.";
+
+  console.error("Agent loop failed:", result.error);
+  // Erro cru do provider (json/stack) nao e' informacao util pra quem perguntou no Discord —
+  // o dono ja recebe o detalhe completo por DM quando o motivo e' o fallback de modelo (ver
+  // opencode-fallback.ts::notifyExhausted); aqui so um aviso curto e humano.
+  const raw = result.error ?? "erro desconhecido";
+  const looksRaw = raw.length > 140 || raw.includes("{\"");
+  return looksRaw
+    ? "Tive um problema técnico tentando responder agora. Já registrei o erro — tenta de novo em instantes."
+    : `Não consegui responder: ${raw}`;
 }
 
 async function handleSebasChatCommand(interaction: DiscordInteraction): Promise<void> {
