@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sebas Docs — API Reference</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/docs.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="dot"></span> Sebas Docs</div>
+    <div class="actions">
+      <button class="btn" id="lang-toggle">PT</button>
+      <a class="btn primary" href="../../ai/" target="_blank" rel="noopener">🤖 <span class="lang-pt">Modo IA</span><span class="lang-en">AI mode</span></a>
+    </div>
+  </header>
+
+  <nav class="sidebar">
+    <h3><span class="lang-pt">Primeiros passos</span><span class="lang-en">Getting started</span></h3>
+    <a class="navlink" href="../index.html"><span class="lang-pt">Introdução</span><span class="lang-en">Introduction</span></a>
+    <a class="navlink" href="../quick-usage.html"><span class="lang-pt">Uso rápido</span><span class="lang-en">Quick usage</span></a>
+    <h3><span class="lang-pt">Contrato de módulo</span><span class="lang-en">Module contract</span></h3>
+    <a class="navlink" href="../contracts.html"><span class="lang-pt">Visão geral do contrato</span><span class="lang-en">Contract overview</span></a>
+    <a class="navlink" href="../creating-a-module.html"><span class="lang-pt">Criando um módulo</span><span class="lang-en">Creating a module</span></a>
+    <h3><span class="lang-pt">Referência de API</span><span class="lang-en">API reference</span></h3>
+    <a class="navlink" href="index.html"><span class="lang-pt">Visão geral</span><span class="lang-en">Overview</span></a>
+    <a class="navlink" href="manifest.html">1. Manifest</a>
+    <a class="navlink" href="module-sdk.html">2. Module SDK</a>
+    <a class="navlink" href="capabilities.html">3. Capabilities</a>
+    <a class="navlink" href="tools-and-agent.html">4. Tools &amp; Agent Loop</a>
+    <a class="navlink" href="permissions.html">5. Permissions &amp; Grants</a>
+    <a class="navlink" href="admin-api.html">6. Admin API</a>
+  </nav>
+
+  <main class="content">
+    <div class="lang-pt">
+      <h1>Referência de API</h1>
+      <p class="lede">Seis sessões, em ordem de aprendizado — cada uma assume as anteriores. Consulta livre depois da primeira leitura.</p>
+
+      <table>
+        <tr><th>#</th><th>Sessão</th><th>O que você aprende</th></tr>
+        <tr><td>1</td><td><a href="manifest.html">Manifest</a></td><td>O schema completo de <code>sebas.module.json</code> — todo módulo começa aqui.</td></tr>
+        <tr><td>2</td><td><a href="module-sdk.html">Module SDK</a></td><td><code>SebasModuleContext</code> inteiro: storage, config, sql, fetch, discord, ai.</td></tr>
+        <tr><td>3</td><td><a href="capabilities.html">Capabilities</a></td><td>As cinco capabilities de verdade e o shape exato de cada entrypoint.</td></tr>
+        <tr><td>4</td><td><a href="tools-and-agent.html">Tools &amp; Agent Loop</a></td><td>Como uma tool de módulo chega até o modelo de IA e volta.</td></tr>
+        <tr><td>5</td><td><a href="permissions.html">Permissions &amp; Grants</a></td><td>O que seu módulo pode pedir, e como isso vira acesso de verdade.</td></tr>
+        <tr><td>6</td><td><a href="admin-api.html">Admin API</a></td><td>A superfície REST que o painel usa — útil se seu módulo tem <code>controller</code>.</td></tr>
+      </table>
+
+      <div class="callout">Precisa da versão compacta, em texto plano, pra colar numa IA? <a href="../../ai/">Modo IA</a> tem tudo isso num único documento.</div>
+
+      <div class="footer-nav">
+        <a href="../contracts.html">← Visão geral do contrato</a>
+        <a href="manifest.html">1. Manifest →</a>
+      </div>
+    </div>
+
+    <div class="lang-en">
+      <h1>API Reference</h1>
+      <p class="lede">Six sessions, in learning order — each assumes the previous ones. Free-form lookup after the first read-through.</p>
+
+      <table>
+        <tr><th>#</th><th>Session</th><th>What you learn</th></tr>
+        <tr><td>1</td><td><a href="manifest.html">Manifest</a></td><td>The full <code>sebas.module.json</code> schema — every module starts here.</td></tr>
+        <tr><td>2</td><td><a href="module-sdk.html">Module SDK</a></td><td>The whole <code>SebasModuleContext</code>: storage, config, sql, fetch, discord, ai.</td></tr>
+        <tr><td>3</td><td><a href="capabilities.html">Capabilities</a></td><td>The five real capabilities and the exact shape of each entrypoint.</td></tr>
+        <tr><td>4</td><td><a href="tools-and-agent.html">Tools &amp; Agent Loop</a></td><td>How a module's tool reaches the AI model and comes back.</td></tr>
+        <tr><td>5</td><td><a href="permissions.html">Permissions &amp; Grants</a></td><td>What your module can ask for, and how that becomes real access.</td></tr>
+        <tr><td>6</td><td><a href="admin-api.html">Admin API</a></td><td>The REST surface the panel uses — useful if your module has a <code>controller</code>.</td></tr>
+      </table>
+
+      <div class="callout">Need the compact, plain-text version to paste into an AI? <a href="../../ai/">AI mode</a> has all of this in one document.</div>
+
+      <div class="footer-nav">
+        <a href="../contracts.html">← Contract overview</a>
+        <a href="manifest.html">1. Manifest →</a>
+      </div>
+    </div>
+  </main>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

@@ -1,0 +1,453 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sebas — Machine-Readable Reference</title>
+<meta name="robots" content="index,follow">
+<style>
+  html,body{margin:0;padding:0;background:#0b0b0c;color:#d8d3c4}
+  body{font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",Menlo,monospace;
+       font-size:14px;line-height:1.55;max-width:100ch;margin:0 auto;padding:2rem 1.25rem 6rem}
+  pre{white-space:pre-wrap;word-wrap:break-word;margin:0}
+  a{color:#e0b24a}
+</style>
+</head>
+<body><pre>
+================================================================================
+SEBAS — MACHINE-READABLE REFERENCE (for LLM / coding-agent consumption)
+================================================================================
+
+WHAT THIS DOCUMENT IS
+  This is the complete technical specification for building third-party
+  "modules" for Sebas, a modular Discord bot platform. It is written in plain
+  text on purpose, no CSS/JS dependent formatting, so any model reading this
+  URL gets the full context in one fetch. If you are an AI/coding agent that
+  was handed this link: read this entire document before writing any code.
+  It contains real TypeScript interfaces, real file paths, and a real worked
+  example, all copied accurately from the running codebase.
+
+  Human-readable version (styled site, PT/EN): https://victorcarmo2003.github.io/sebas-bot/docs/human/
+  Source repo (monorepo, MIT-style read access, public): https://github.com/victorcarmo2003/sebas-bot
+  Reference module #1 (in-tree, RSS+AI+Discord): https://github.com/victorcarmo2003/sebas-module-changelog-roblox
+  Reference module #2 (in-tree, access control): https://github.com/victorcarmo2003/sebas-module-permissions
+
+  Your goal, most likely: write a new Sebas module (a small TypeScript
+  package with a sebas.module.json manifest) that Sebas can clone, build,
+  sandbox-test, and run. Everything you need for that is below.
+
+--------------------------------------------------------------------------------
+1. WHAT SEBAS IS
+--------------------------------------------------------------------------------
+  Sebas is a Discord bot platform split into three parts (npm workspace
+  monorepo):
+
+    packages/core    @sebas-bot/core    Node/TypeScript. Receives Discord
+                                         interactions, exposes an admin REST
+                                         API, runs modules. Two entrypoints:
+                                         bin/bot.ts (webhook + admin API) and
+                                         bin/worker.ts (cron + queue). A third,
+                                         bin/gateway.ts, holds a persistent
+                                         Discord Gateway WebSocket for passive
+                                         chat (DM / @mention, no slash command).
+
+    packages/panel   @sebas-bot/panel   Next.js admin dashboard. Talks to core
+                                         over HTTP (Bearer secret + an
+                                         X-Admin-Discord-Id header identifying
+                                         which admin is calling).
+
+    packages/modules/*  In-tree modules, bundled in the monorepo, auto-
+                                         trusted (no approval flow).
+
+  Third-party modules do NOT live in this repo. They are separate git
+  repositories (like the two reference modules above) that Sebas clones
+  dynamically at install time (see section 9, "Marketplace / distribution").
+
+--------------------------------------------------------------------------------
+2. MODULE EXECUTION MODEL
+--------------------------------------------------------------------------------
+  Every module (in-tree or installed) runs isolated inside a Node
+  worker_thread, one thread per running module. The module NEVER touches
+  Node's real fs/net/child_process APIs directly. Instead it receives a
+  `SebasModuleContext` object (full shape in section 5) whose methods are
+  RPC calls back to the main process — the main process is what actually
+  touches SQLite / network / Discord, and it validates every call against
+  the permissions granted to that specific module.
+
+  Core-side files that implement this, for reference (you will not need to
+  edit these to write a module, but they define ground truth):
+    packages/core/src/core/modules/types.ts             the whole contract
+    packages/core/src/core/modules/host.ts               spawns/controls workers
+    packages/core/src/core/modules/context-bridge.ts      real ctx implementation
+    packages/core/src/core/modules/runner.ts              worker-side dispatcher
+    packages/core/src/core/modules/context-in-worker.ts   worker-side ctx proxy
+    packages/core/src/core/modules/worker-protocol.ts     RPC message shapes
+
+--------------------------------------------------------------------------------
+3. THE MANIFEST — sebas.module.json (required, at repo root)
+--------------------------------------------------------------------------------
+  TypeScript shape (packages/core/src/core/modules/types.ts):
+
+  interface SebasModuleManifest {
+    schemaVersion: 1;
+    id: string;                    // stable slug, e.g. "changelog-roblox"
+    name: string;                  // display name
+    description?: string;
+    version: string;               // your own semver
+    sebasCompat: string;           // e.g. "^1.0.0" — core currently announces "1.0.0", only MAJOR must match
+    repoUrl: string;                // your repo's clone URL (https)
+    capabilities: ModuleCapability[]; // see section 6
+    entryPoints: Record&lt;string, string | undefined&gt;; // capability name -> "dist/xxx.js" path
+    cron?: { schedule: string; timeoutMs?: number };  // only if capabilities includes "cron"
+    discordCommands?: { commands: string[] };          // only if capabilities includes "discordCommands"
+    webhook?: { publicPath: string };                  // declared, not wired to anything yet — do not rely on it
+    permissions?: {
+      adminScopes?: string[];
+      providesScopes?: string[];
+      network?: { domains: string[] };     // exact hostnames your module's ctx.fetch may call
+      storage?: { kind?: "kv" | "sql"; maxMb: number };
+      discordPermissions?: string[];       // "send-messages" | "edit-interactions" (only two enforced today)
+    };
+    dependencies?: { aiProvider?: string }; // "core" = use the bot owner's configured AI provider
+    resources: { maxMemoryMb: number };
+  }
+
+  ModuleCapability = "controller" | "cron" | "ui" | "discordCommands" | "tools"
+                   | "aiProvider" | "storage" | "webhook" | "permissionGate"
+
+  IMPORTANT — capabilities that exist in the type union but are NOT actually
+  implemented anywhere in core (declaring them does nothing): "ui",
+  "aiProvider", "storage", "webhook". Do not rely on them. The five that are
+  real and wired end-to-end: controller, cron, discordCommands, tools,
+  permissionGate (all detailed in section 6).
+
+  Real example (packages/modules/changelog-roblox/sebas.module.json,
+  trimmed):
+
+    {
+      "schemaVersion": 1,
+      "id": "changelog-roblox",
+      "name": "Changelog do Roblox",
+      "version": "1.0.0",
+      "sebasCompat": "^1.0.0",
+      "repoUrl": "https://github.com/victorcarmo2003/sebas-module-changelog-roblox",
+      "capabilities": ["controller", "cron", "discordCommands"],
+      "entryPoints": {
+        "controller": "dist/controller.js",
+        "chronos": "dist/cron.js",
+        "discordCommands": "dist/discord-commands.js"
+      },
+      "cron": { "schedule": "7,37 * * * *", "timeoutMs": 600000 },
+      "discordCommands": { "commands": ["setup", "teste"] },
+      "permissions": {
+        "network": { "domains": ["robloxapi.github.io", "create.roblox.com"] },
+        "storage": { "kind": "sql", "maxMb": 64 },
+        "discordPermissions": ["send-messages", "edit-interactions"]
+      },
+      "dependencies": { "aiProvider": "core" },
+      "resources": { "maxMemoryMb": 96 }
+    }
+
+  NOTE the entryPoints key for cron capability is "chronos", not "cron" —
+  this is a real, easy-to-miss mismatch in the codebase (manifest.cron is
+  the *schedule config*, entryPoints.chronos is the *file path*).
+
+--------------------------------------------------------------------------------
+4. PACKAGE LAYOUT YOU MUST PRODUCE
+--------------------------------------------------------------------------------
+  your-module-repo/
+    sebas.module.json     (section 3)
+    package.json           name, "type":"module", "scripts.build":"tsc -p .", devDeps typescript+@types/node
+    tsconfig.json           see below, must output CommonJS-free NodeNext ESM to dist/
+    src/*.ts                your source
+    dist/*.js                built output (entryPoints in the manifest point here)
+
+  tsconfig.json (copy verbatim, this is what both reference modules use):
+
+    {
+      "compilerOptions": {
+        "target": "ES2023",
+        "lib": ["ES2023"],
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
+        "outDir": "dist",
+        "rootDir": "src",
+        "strict": true,
+        "esModuleInterop": true,
+        "forceConsistentCasingInFileNames": true,
+        "skipLibCheck": true,
+        "types": ["node"]
+      },
+      "include": ["src/**/*.ts"]
+    }
+
+  CRITICAL: with NodeNext module resolution, every relative import in your
+  .ts source MUST use an explicit ".js" extension, even though the source
+  file is .ts — e.g. `import { loadGateConfig } from "./storage.js";` — this
+  is standard NodeNext behavior, not a Sebas quirk, but it trips people up.
+
+  You do not vendor the SebasModuleContext types from a published npm
+  package (none exists yet) — copy the relevant interfaces from section 5
+  below into a local src/sebas-types.ts. Both reference modules do exactly
+  this (see their src/sebas-types.ts).
+
+--------------------------------------------------------------------------------
+5. SebasModuleContext — full SDK surface your module receives
+--------------------------------------------------------------------------------
+  Every entrypoint function receives `(ctx: SebasModuleContext, ...)`.
+
+  interface SebasModuleContext {
+    moduleId: string;
+    logger: SebasModuleLogger;
+    storage: SebasModuleStorage;
+    config: SebasModuleConfig;
+    sql: SebasModuleSql;
+    fetch: SebasModuleFetch;
+    discord: SebasModuleDiscord;
+    ai: SebasModuleAi | null;   // null if the bot owner hasn't configured an AI provider
+  }
+
+  interface SebasModuleLogger {
+    info(message: string, meta?: Record&lt;string, unknown&gt;): void;
+    warn(message: string, meta?: Record&lt;string, unknown&gt;): void;
+    error(message: string, meta?: Record&lt;string, unknown&gt;): void;
+  }
+
+  interface SebasModuleStorage {           // simple per-module key-value store
+    get&lt;T = unknown&gt;(key: string): Promise&lt;T | null&gt;;
+    set(key: string, value: unknown): Promise&lt;void&gt;;
+    delete(key: string): Promise&lt;void&gt;;
+    list(prefix?: string): Promise&lt;string[]&gt;;
+  }
+
+  interface SebasModuleConfig {            // separate small key-value store, same shape as storage
+    get&lt;T = unknown&gt;(key: string): Promise&lt;T | null&gt;;
+    set(key: string, value: unknown): Promise&lt;void&gt;;
+  }
+
+  type SebasModuleFetch = (url: string, init?: {
+    method?: string; headers?: Record&lt;string,string&gt;; body?: string;
+  }) =&gt; Promise&lt;{ status: number; headers: Record&lt;string,string&gt;;
+                  text: () =&gt; Promise&lt;string&gt;; json: () =&gt; Promise&lt;unknown&gt;; }&gt;;
+  // Host enforces manifest.permissions.network.domains — calls to any other
+  // hostname are rejected. This is why you must declare every domain you
+  // call up front in the manifest.
+
+  interface SebasModuleDiscord {
+    sendChannelMessage(channelId: string, content: { content?: string; embeds?: unknown[]; mentionRoleIds?: string[] }): Promise&lt;void&gt;;
+    sendDm(discordUserId: string, content: { content?: string; embeds?: unknown[] }): Promise&lt;void&gt;;
+    editInteractionResponse(applicationId: string, interactionToken: string, content: { content?: string; embeds?: unknown[] }): Promise&lt;void&gt;;
+  }
+  // Requires manifest.permissions.discordPermissions to include
+  // "send-messages" (sendChannelMessage/sendDm) or "edit-interactions"
+  // (editInteractionResponse) — these are the only two enforced strings today.
+
+  interface SebasModuleAi {
+    run(request: SebasModuleAiRequest): Promise&lt;SebasModuleAiResult&gt;;
+  }
+  interface SebasModuleAiRequest {
+    systemPrompt?: string; userPrompt: string;
+    jsonSchema?: Record&lt;string, unknown&gt;; jsonSchemaName?: string;
+    maxOutputTokens?: number; temperature?: number; usePersona?: boolean;
+  }
+  interface SebasModuleAiResult { ok: boolean; json?: unknown; text?: string; error?: string; }
+  // Requires manifest.dependencies.aiProvider === "core". ctx.ai is null
+  // otherwise, or if the bot owner has not configured a provider — always
+  // check for null before calling .run().
+
+  type SebasSqlColumnType = "text" | "integer" | "real";
+  type SebasSqlValue = string | number | boolean | null;
+  interface SebasSqlRow { [column: string]: SebasSqlValue; }
+  interface SebasSqlSelectOptions {
+    where?: Record&lt;string, SebasSqlValue&gt;; orderDirection?: "asc" | "desc";
+    cursor?: number; limit?: number;
+  }
+  interface SebasModuleSql {                 // your own isolated SQLite tables
+    createTable(table: string, columns: Record&lt;string, SebasSqlColumnType&gt;): Promise&lt;void&gt;;
+    insert(table: string, row: SebasSqlRow): Promise&lt;{ id: number }&gt;;
+    select(table: string, options?: SebasSqlSelectOptions): Promise&lt;Array&lt;SebasSqlRow &amp; { id: number }&gt;&gt;;
+    update(table: string, where: Record&lt;string, SebasSqlValue&gt;, patch: SebasSqlRow): Promise&lt;{ changes: number }&gt;;
+    delete(table: string, where: Record&lt;string, SebasSqlValue&gt;): Promise&lt;{ changes: number }&gt;;
+  }
+  // Requires manifest.permissions.storage.kind === "sql". createTable is
+  // idempotent-safe to call at the top of every function that needs it
+  // (both reference modules do this instead of a separate migration step).
+
+--------------------------------------------------------------------------------
+6. CAPABILITIES — the five real ones, one section each
+--------------------------------------------------------------------------------
+
+  6.1 controller — generic HTTP-shaped request/response
+      entryPoints.controller -&gt; default export:
+        interface SebasModuleController {
+          handleRequest(ctx, req: SebasControllerRequest): Promise&lt;SebasControllerResponse&gt;;
+          selfTest(ctx): Promise&lt;void&gt;;   // called once during install, sandboxed (see section 9)
+        }
+        interface SebasControllerRequest { method: string; path: string; query: Record&lt;string,string&gt;; headers: Record&lt;string,string&gt;; body: unknown; }
+        interface SebasControllerResponse { status: number; body: unknown; }
+      This is how the admin panel talks to your module's own settings screen
+      (you write the panel UI by hand too — there is no declarative UI
+      capability despite "ui" existing as a string in the type union).
+      Core mounts it at:  ANY /api/admin/modules/:yourModuleId/controller/*
+      req.path arrives already stripped of that prefix, e.g. a client GET to
+      .../modules/permissions/controller/gates/dm arrives as req.path="/gates/dm".
+
+  6.2 cron — periodic background work
+      entryPoints.chronos -&gt; default export:
+        interface SebasModuleChronos { run(ctx): Promise&lt;void&gt;; }
+      Scheduled per manifest.cron.schedule (standard 5-field cron, local
+      time on the host). Runs synchronously to completion — there is no
+      separate async job queue consumer wired up yet (the queue table
+      exists in the DB as generic infrastructure but nothing drains it for
+      module work today; do your polling/work directly inside run()).
+
+  6.3 discordCommands — slash commands
+      entryPoints.discordCommands -&gt; default export:
+        interface SebasModuleDiscordCommandDefinition { name: string; description: string; }
+        interface SebasModuleDiscordCommands {
+          commands: SebasModuleDiscordCommandDefinition[];
+          handleCommand(ctx, commandName: string, interaction: unknown): Promise&lt;{ content: string } | void&gt;;
+        }
+      Must also list the same command names in manifest.discordCommands.commands.
+      Core defers the interaction (Discord shows "thinking...") and calls
+      handleCommand; you finish by returning { content } (edits the deferred
+      response automatically) OR by calling
+      ctx.discord.editInteractionResponse yourself and returning void.
+
+  6.4 tools — function-calling tools the AI can invoke
+      entryPoints.tools -&gt; default export:
+        interface SebasToolDefinition { name: string; description: string; parameters: Record&lt;string, unknown&gt;; } // JSON Schema object, OpenAI function-calling format
+        interface SebasToolCallResult { ok: boolean; result?: unknown; error?: string; }
+        interface SebasModuleTools {
+          tools: SebasToolDefinition[];
+          callTool(ctx, name: string, args: Record&lt;string, unknown&gt;): Promise&lt;SebasToolCallResult&gt;;
+        }
+      Core's tool registry (packages/core/src/core/tools/registry.ts)
+      qualifies every tool name as "module:&lt;your-module-id&gt;:&lt;tool-name&gt;"
+      before showing it to the AI model, so pick short, clear tool names —
+      the qualification prefix is added automatically, don't duplicate it.
+
+  6.5 permissionGate — access control hook (new, added for the "permissions" reference module)
+      entryPoints.permissionGate -&gt; default export:
+        interface PermissionGateRequest {
+          discordUserId: string; guildId: string | null; roleIds: string[];
+          surface: "dm" | "mention" | "slash_command"; isOwner: boolean;
+        }
+        interface PermissionGateResult { canRespond: boolean; allowedTools: string[] | "all"; }
+        interface SebasModulePermissionGate {
+          checkGate(ctx, req: PermissionGateRequest): Promise&lt;PermissionGateResult&gt;;
+        }
+      Core calls this (if such a module is installed and enabled) before
+      answering any DM/mention/slash-command chat, and before letting the
+      agent-loop pass tools to the AI model. If no permissionGate module is
+      installed, or it throws, core fails safe: only the configured owner
+      gets canRespond=true/allowedTools="all", everyone else is silently
+      ignored. See the real implementation for the full pattern (mode
+      everyone/whitelist/blacklist per surface, role-based rules, a global
+      tool allowlist): https://github.com/victorcarmo2003/sebas-module-permissions
+
+--------------------------------------------------------------------------------
+7. PERMISSIONS &amp; GRANTS — what you may ask for, what actually gets enforced
+--------------------------------------------------------------------------------
+  type ModuleGrantType = "adminScope" | "providesScope" | "networkDomain"
+                        | "storage" | "discordPermission" | "aiProviderDependency";
+
+  manifest.permissions declares what you WANT. The bot owner reviews the
+  diff and approves it (marketplace flow, section 9) before your module
+  ever runs with real access — self-test (section 9) runs with NOTHING
+  granted except ctx.storage. Nothing you declare is auto-granted; the
+  owner always has to click "aprovar" in the panel first, and again on any
+  future update that requests something new (this second part — re-approval
+  on update — is not implemented yet as of this writing; today an update
+  keeps whatever was already granted and never silently widens it).
+
+--------------------------------------------------------------------------------
+8. AI PROVIDER (core-level, for context — you consume this indirectly via ctx.ai)
+--------------------------------------------------------------------------------
+  Core supports OpenCode Zen (free tier, OpenAI-compatible) and OpenAI as
+  chat providers, configured by the bot owner in the panel
+  (Settings → OpenCode). The free tier now has automatic model-priority
+  fallback: the owner orders several free models by preference in the
+  panel (drag-and-drop), and on an HTTP 429 rate-limit response core
+  automatically retries the next model in the list within the same
+  request, marks the failed model on a cooldown (default 24h, configurable),
+  and DMs the owner. This is transparent to modules — ctx.ai.run() just
+  works or returns { ok:false, error }.
+
+--------------------------------------------------------------------------------
+9. MARKETPLACE / DISTRIBUTION — how your module actually gets installed
+--------------------------------------------------------------------------------
+  1. You publish a public git repo with sebas.module.json at the root
+     (structure per section 4). Committing your built dist/ folder too is
+     conventional here (both reference modules do it) though not strictly
+     required — the installer always rebuilds from source anyway.
+  2. Bot owner finds it (GitHub code search for filename:sebas.module.json,
+     via the panel's Marketplace page) or pastes your repo URL directly.
+  3. POST /api/admin/modules/install {repoUrl} — core clones (--depth 1,
+     sandboxed with bubblewrap on Linux when available), reads/validates
+     the manifest (schemaVersion, sebasCompat major-version match), runs
+     `npm install --ignore-scripts &amp;&amp; npm run build` (ignore-scripts blocks
+     arbitrary postinstall code — do not rely on postinstall/preinstall
+     hooks, they will not run), then starts your module with EMPTY grants
+     and installSandbox:true (ctx.storage only, no network/discord/ai) and
+     calls your controller's selfTest(ctx) once. Design selfTest to be a
+     smoke test that only needs storage — a network call here will fail.
+  4. Owner reviews the requested permission diff and approves or rejects.
+  5. Owner enables it — now it runs for real with the granted permissions,
+     joins the cron schedule if any, etc.
+  6. Updates: owner clicks "check for update" / "update now" in the panel,
+     or auto-update-on-new-commit if they enabled it (Settings → Marketplace).
+     Same clone+build+self-test flow, re-uses whatever grants were already
+     active, never widens them automatically.
+
+--------------------------------------------------------------------------------
+10. MINIMAL WORKED EXAMPLE — a tools-only module from scratch
+--------------------------------------------------------------------------------
+  sebas.module.json:
+    {
+      "schemaVersion": 1, "id": "dice-roller", "name": "Dice Roller",
+      "version": "1.0.0", "sebasCompat": "^1.0.0",
+      "repoUrl": "https://github.com/you/sebas-module-dice-roller",
+      "capabilities": ["tools"],
+      "entryPoints": { "tools": "dist/tools.js" },
+      "resources": { "maxMemoryMb": 32 }
+    }
+
+  src/tools.ts:
+    import type { SebasModuleContext, SebasModuleTools } from "./sebas-types.js";
+
+    const tools: SebasModuleTools = {
+      tools: [{
+        name: "roll_dice",
+        description: "Rolls an N-sided die and returns the result.",
+        parameters: { type: "object", properties: { sides: { type: "number" } }, required: ["sides"] }
+      }],
+      async callTool(ctx: SebasModuleContext, name, args) {
+        if (name !== "roll_dice") return { ok: false, error: "unknown tool" };
+        const sides = Number((args as { sides: unknown }).sides) || 6;
+        return { ok: true, result: { rolled: 1 + Math.floor(Math.random() * sides) } };
+      }
+    };
+    export default tools;
+
+  That's a complete, installable module. No storage, no network, no
+  Discord permission needed — the manifest declares nothing beyond "tools".
+
+--------------------------------------------------------------------------------
+11. GOTCHAS CHECKLIST
+--------------------------------------------------------------------------------
+  [ ] Every relative import ends in .js, not .ts (NodeNext ESM).
+  [ ] entryPoints.chronos, not entryPoints.cron, for the cron capability.
+  [ ] selfTest() must work with ONLY ctx.storage — no network/discord/ai.
+  [ ] Every hostname ctx.fetch will call is listed in permissions.network.domains.
+  [ ] discordPermissions only recognizes "send-messages" and "edit-interactions" today.
+  [ ] Tool names are qualified automatically as module:&lt;id&gt;:&lt;name&gt; — don't prefix them yourself.
+  [ ] ctx.ai can be null — check before calling .run().
+  [ ] "ui" / "aiProvider" (as a capability) / "storage" (as a capability) / "webhook" are declared in the type system but not implemented — do not build against them expecting behavior.
+  [ ] package.json needs "type":"module" and scripts.build:"tsc -p .".
+  [ ] npm install runs with --ignore-scripts during install — no postinstall reliance.
+
+================================================================================
+END OF DOCUMENT
+================================================================================
+</pre></body>
+</html>

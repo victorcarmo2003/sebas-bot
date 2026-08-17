@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sebas Docs — Quick Usage</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="assets/docs.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="dot"></span> Sebas Docs</div>
+    <div class="actions">
+      <button class="btn" id="lang-toggle">PT</button>
+      <a class="btn primary" href="../ai/" target="_blank" rel="noopener">🤖 <span class="lang-pt">Modo IA</span><span class="lang-en">AI mode</span></a>
+    </div>
+  </header>
+
+  <nav class="sidebar">
+    <h3><span class="lang-pt">Primeiros passos</span><span class="lang-en">Getting started</span></h3>
+    <a class="navlink" href="index.html"><span class="lang-pt">Introdução</span><span class="lang-en">Introduction</span></a>
+    <a class="navlink" href="quick-usage.html"><span class="lang-pt">Uso rápido</span><span class="lang-en">Quick usage</span></a>
+    <h3><span class="lang-pt">Contrato de módulo</span><span class="lang-en">Module contract</span></h3>
+    <a class="navlink" href="contracts.html"><span class="lang-pt">Visão geral do contrato</span><span class="lang-en">Contract overview</span></a>
+    <a class="navlink" href="creating-a-module.html"><span class="lang-pt">Criando um módulo</span><span class="lang-en">Creating a module</span></a>
+    <h3><span class="lang-pt">Referência de API</span><span class="lang-en">API reference</span></h3>
+    <a class="navlink" href="api/index.html"><span class="lang-pt">Visão geral</span><span class="lang-en">Overview</span></a>
+    <a class="navlink" href="api/manifest.html">1. Manifest</a>
+    <a class="navlink" href="api/module-sdk.html">2. Module SDK</a>
+    <a class="navlink" href="api/capabilities.html">3. Capabilities</a>
+    <a class="navlink" href="api/tools-and-agent.html">4. Tools &amp; Agent Loop</a>
+    <a class="navlink" href="api/permissions.html">5. Permissions &amp; Grants</a>
+    <a class="navlink" href="api/admin-api.html">6. Admin API</a>
+  </nav>
+
+  <main class="content">
+    <div class="lang-pt">
+      <h1>Uso rápido</h1>
+      <p class="lede">O básico do painel administrativo — sem entrar em código de módulo.</p>
+
+      <h2>Conversar com o Sebas</h2>
+      <ul>
+        <li><code>/sebas mensagem:...</code> — slash command, resposta ephemeral (só você vê), funciona em qualquer canal onde o bot está.</li>
+        <li>DM direta ou @menção num canal — conversa passiva, sujeita às regras do módulo de permissões (se instalado; por padrão só o dono do bot é respondido).</li>
+      </ul>
+
+      <h2>Painel: Configurações</h2>
+      <table>
+        <tr><th>Aba</th><th>O que tem</th></tr>
+        <tr><td>Conta</td><td>Identidade da sessão, token do GitHub (necessário pra busca de módulos no marketplace), auto-update do próprio Sebas.</td></tr>
+        <tr><td>Parâmetros</td><td>Override de persona/system prompt, temperature/max_tokens padrão, cooldown de rate limit.</td></tr>
+        <tr><td>OpenCode</td><td>Chave da conta OpenCode Zen, ordem de prioridade de modelos gratuitos (drag-and-drop), troca automática de modelo em rate limit.</td></tr>
+        <tr><td>Marketplace</td><td>Intervalo de verificação de atualização de módulo instalado, auto-update por módulo.</td></tr>
+      </table>
+
+      <h2>Painel: Módulos</h2>
+      <p><code>/modules</code> lista todos os módulos (in-tree e instalados). <code>/modules/marketplace</code> busca repositórios públicos com <code>sebas.module.json</code> no GitHub — cards já instalados mostram "Configurar" em vez de "Instalar".</p>
+      <p>Um módulo instalado passa por: <span class="pill">pending</span> → dono aprova as permissões pedidas → <span class="pill">approved</span> → dono habilita → <span class="pill">enabled</span>. Dá pra desabilitar/desinstalar a qualquer momento.</p>
+
+      <h2>Admins/subadmins</h2>
+      <p>A página <code>/admins</code> controla quem acessa o <strong>painel</strong> e o que cada subadmin pode ver/editar (escopos como <code>guilds:view</code>, <code>modules:manage</code>, etc). Isso é diferente de quem pode <strong>falar com o bot no Discord</strong> — essa segunda parte é controlada pelo módulo <code>permissions</code> (se instalado), não pela página de admins.</p>
+
+      <div class="footer-nav">
+        <a href="index.html">← Introdução</a>
+        <a href="contracts.html">Visão geral do contrato →</a>
+      </div>
+    </div>
+
+    <div class="lang-en">
+      <h1>Quick usage</h1>
+      <p class="lede">The basics of the admin panel — no module code yet.</p>
+
+      <h2>Talking to Sebas</h2>
+      <ul>
+        <li><code>/sebas message:...</code> — slash command, ephemeral reply (only you see it), works in any channel the bot is in.</li>
+        <li>Direct DM or @mention in a channel — passive chat, subject to the permissions module's rules (if installed; by default only the bot owner gets a reply).</li>
+      </ul>
+
+      <h2>Panel: Settings</h2>
+      <table>
+        <tr><th>Tab</th><th>What's in it</th></tr>
+        <tr><td>Account</td><td>Session identity, GitHub token (needed for marketplace search), Sebas self-update.</td></tr>
+        <tr><td>Parameters</td><td>Persona/system prompt override, default temperature/max_tokens, rate-limit cooldown.</td></tr>
+        <tr><td>OpenCode</td><td>OpenCode Zen account key, free-model priority order (drag-and-drop), automatic model switch on rate limit.</td></tr>
+        <tr><td>Marketplace</td><td>Installed-module update-check interval, per-module auto-update.</td></tr>
+      </table>
+
+      <h2>Panel: Modules</h2>
+      <p><code>/modules</code> lists every module (in-tree and installed). <code>/modules/marketplace</code> searches public GitHub repos containing a <code>sebas.module.json</code> — already-installed cards show "Configure" instead of "Install".</p>
+      <p>An installed module goes through: <span class="pill">pending</span> → owner approves the requested permissions → <span class="pill">approved</span> → owner enables it → <span class="pill">enabled</span>. It can be disabled/uninstalled at any time.</p>
+
+      <h2>Admins/subadmins</h2>
+      <p>The <code>/admins</code> page controls who can access the <strong>panel</strong> and what each subadmin can see/edit (scopes like <code>guilds:view</code>, <code>modules:manage</code>, etc). That's different from who can <strong>talk to the bot on Discord</strong> — that second part is controlled by the <code>permissions</code> module (if installed), not the admins page.</p>
+
+      <div class="footer-nav">
+        <a href="index.html">← Introduction</a>
+        <a href="contracts.html">Contract overview →</a>
+      </div>
+    </div>
+  </main>
+
+  <script src="assets/docs.js"></script>
+</body>
+</html>

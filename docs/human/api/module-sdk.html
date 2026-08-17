@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sebas Docs — API: Module SDK</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/docs.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="dot"></span> Sebas Docs</div>
+    <div class="actions">
+      <button class="btn" id="lang-toggle">PT</button>
+      <a class="btn primary" href="../../ai/" target="_blank" rel="noopener">🤖 <span class="lang-pt">Modo IA</span><span class="lang-en">AI mode</span></a>
+    </div>
+  </header>
+
+  <nav class="sidebar">
+    <h3><span class="lang-pt">Primeiros passos</span><span class="lang-en">Getting started</span></h3>
+    <a class="navlink" href="../index.html"><span class="lang-pt">Introdução</span><span class="lang-en">Introduction</span></a>
+    <a class="navlink" href="../quick-usage.html"><span class="lang-pt">Uso rápido</span><span class="lang-en">Quick usage</span></a>
+    <h3><span class="lang-pt">Contrato de módulo</span><span class="lang-en">Module contract</span></h3>
+    <a class="navlink" href="../contracts.html"><span class="lang-pt">Visão geral do contrato</span><span class="lang-en">Contract overview</span></a>
+    <a class="navlink" href="../creating-a-module.html"><span class="lang-pt">Criando um módulo</span><span class="lang-en">Creating a module</span></a>
+    <h3><span class="lang-pt">Referência de API</span><span class="lang-en">API reference</span></h3>
+    <a class="navlink" href="index.html"><span class="lang-pt">Visão geral</span><span class="lang-en">Overview</span></a>
+    <a class="navlink" href="manifest.html">1. Manifest</a>
+    <a class="navlink" href="module-sdk.html">2. Module SDK</a>
+    <a class="navlink" href="capabilities.html">3. Capabilities</a>
+    <a class="navlink" href="tools-and-agent.html">4. Tools &amp; Agent Loop</a>
+    <a class="navlink" href="permissions.html">5. Permissions &amp; Grants</a>
+    <a class="navlink" href="admin-api.html">6. Admin API</a>
+  </nav>
+
+  <main class="content">
+    <div class="lang-pt">
+      <h1>2. Module SDK</h1>
+      <p class="lede">Todo entrypoint recebe <code>(ctx: SebasModuleContext, ...)</code> como primeiro argumento — é a única superfície de acesso ao mundo fora da worker.</p>
+
+      <pre>interface SebasModuleContext {
+  moduleId: string;
+  logger: SebasModuleLogger;
+  storage: SebasModuleStorage;
+  config: SebasModuleConfig;
+  sql: SebasModuleSql;
+  fetch: SebasModuleFetch;
+  discord: SebasModuleDiscord;
+  ai: SebasModuleAi | null;   // null se o dono nao configurou provedor de IA
+}</pre>
+
+      <h2>logger</h2>
+      <pre>interface SebasModuleLogger {
+  info(message: string, meta?: Record&lt;string, unknown&gt;): void;
+  warn(message: string, meta?: Record&lt;string, unknown&gt;): void;
+  error(message: string, meta?: Record&lt;string, unknown&gt;): void;
+}</pre>
+
+      <h2>storage &amp; config</h2>
+      <p>Dois key-value stores separados, mesmo shape. <code>storage</code> é o de uso geral; <code>config</code> existe à parte por convenção (ex. configuração vs. dado de runtime).</p>
+      <pre>interface SebasModuleStorage {
+  get&lt;T = unknown&gt;(key: string): Promise&lt;T | null&gt;;
+  set(key: string, value: unknown): Promise&lt;void&gt;;
+  delete(key: string): Promise&lt;void&gt;;
+  list(prefix?: string): Promise&lt;string[]&gt;;
+}</pre>
+
+      <h2>sql</h2>
+      <p>Suas próprias tabelas SQLite, isoladas por módulo. Requer <code>permissions.storage.kind: "sql"</code> no manifest.</p>
+      <pre>type SebasSqlColumnType = "text" | "integer" | "real";
+type SebasSqlValue = string | number | boolean | null;
+interface SebasSqlRow { [column: string]: SebasSqlValue; }
+interface SebasSqlSelectOptions {
+  where?: Record&lt;string, SebasSqlValue&gt;;
+  orderDirection?: "asc" | "desc";
+  cursor?: number;
+  limit?: number;
+}
+interface SebasModuleSql {
+  createTable(table: string, columns: Record&lt;string, SebasSqlColumnType&gt;): Promise&lt;void&gt;;
+  insert(table: string, row: SebasSqlRow): Promise&lt;{ id: number }&gt;;
+  select(table: string, options?: SebasSqlSelectOptions): Promise&lt;Array&lt;SebasSqlRow &amp; { id: number }&gt;&gt;;
+  update(table: string, where: Record&lt;string, SebasSqlValue&gt;, patch: SebasSqlRow): Promise&lt;{ changes: number }&gt;;
+  delete(table: string, where: Record&lt;string, SebasSqlValue&gt;): Promise&lt;{ changes: number }&gt;;
+}</pre>
+      <div class="callout"><code>createTable</code> é seguro de chamar toda vez (idempotente) — os dois módulos de referência chamam no início de toda função que precisa da tabela, sem migration separada.</div>
+
+      <h2>fetch</h2>
+      <pre>type SebasModuleFetch = (url: string, init?: {
+  method?: string; headers?: Record&lt;string, string&gt;; body?: string;
+}) =&gt; Promise&lt;{
+  status: number; headers: Record&lt;string, string&gt;;
+  text: () =&gt; Promise&lt;string&gt;; json: () =&gt; Promise&lt;unknown&gt;;
+}&gt;;</pre>
+      <div class="callout warn">O host valida contra <code>manifest.permissions.network.domains</code> — chamar um hostname não declarado é rejeitado. Declare todo domínio que seu módulo vai chamar.</div>
+
+      <h2>discord</h2>
+      <pre>interface SebasModuleDiscord {
+  sendChannelMessage(channelId: string, content: { content?: string; embeds?: unknown[]; mentionRoleIds?: string[] }): Promise&lt;void&gt;;
+  sendDm(discordUserId: string, content: { content?: string; embeds?: unknown[] }): Promise&lt;void&gt;;
+  editInteractionResponse(applicationId: string, interactionToken: string, content: { content?: string; embeds?: unknown[] }): Promise&lt;void&gt;;
+}</pre>
+      <p>Requer <code>discordPermissions</code> no manifest: <code>"send-messages"</code> pra <code>sendChannelMessage</code>/<code>sendDm</code>, <code>"edit-interactions"</code> pra <code>editInteractionResponse</code> — únicas duas strings checadas hoje.</p>
+
+      <h2>ai</h2>
+      <pre>interface SebasModuleAi { run(request: SebasModuleAiRequest): Promise&lt;SebasModuleAiResult&gt;; }
+interface SebasModuleAiRequest {
+  systemPrompt?: string; userPrompt: string;
+  jsonSchema?: Record&lt;string, unknown&gt;; jsonSchemaName?: string;
+  maxOutputTokens?: number; temperature?: number; usePersona?: boolean;
+}
+interface SebasModuleAiResult { ok: boolean; json?: unknown; text?: string; error?: string; }</pre>
+      <p>Requer <code>dependencies.aiProvider: "core"</code> no manifest. <code>ctx.ai</code> é <code>null</code> quando isso não está declarado, ou quando o dono do bot ainda não configurou nenhum provedor — sempre cheque antes de chamar <code>.run()</code>.</p>
+
+      <div class="footer-nav">
+        <a href="manifest.html">← 1. Manifest</a>
+        <a href="capabilities.html">3. Capabilities →</a>
+      </div>
+    </div>
+
+    <div class="lang-en">
+      <h1>2. Module SDK</h1>
+      <p class="lede">Every entrypoint receives <code>(ctx: SebasModuleContext, ...)</code> as its first argument — it's the only surface for reaching anything outside the worker.</p>
+
+      <pre>interface SebasModuleContext {
+  moduleId: string;
+  logger: SebasModuleLogger;
+  storage: SebasModuleStorage;
+  config: SebasModuleConfig;
+  sql: SebasModuleSql;
+  fetch: SebasModuleFetch;
+  discord: SebasModuleDiscord;
+  ai: SebasModuleAi | null;   // null if the owner hasn't configured an AI provider
+}</pre>
+
+      <h2>logger</h2>
+      <pre>interface SebasModuleLogger {
+  info(message: string, meta?: Record&lt;string, unknown&gt;): void;
+  warn(message: string, meta?: Record&lt;string, unknown&gt;): void;
+  error(message: string, meta?: Record&lt;string, unknown&gt;): void;
+}</pre>
+
+      <h2>storage &amp; config</h2>
+      <p>Two separate key-value stores, same shape. <code>storage</code> is general-purpose; <code>config</code> exists separately by convention (e.g. configuration vs. runtime data).</p>
+      <pre>interface SebasModuleStorage {
+  get&lt;T = unknown&gt;(key: string): Promise&lt;T | null&gt;;
+  set(key: string, value: unknown): Promise&lt;void&gt;;
+  delete(key: string): Promise&lt;void&gt;;
+  list(prefix?: string): Promise&lt;string[]&gt;;
+}</pre>
+
+      <h2>sql</h2>
+      <p>Your own SQLite tables, isolated per module. Requires <code>permissions.storage.kind: "sql"</code> in the manifest.</p>
+      <pre>type SebasSqlColumnType = "text" | "integer" | "real";
+type SebasSqlValue = string | number | boolean | null;
+interface SebasSqlRow { [column: string]: SebasSqlValue; }
+interface SebasSqlSelectOptions {
+  where?: Record&lt;string, SebasSqlValue&gt;;
+  orderDirection?: "asc" | "desc";
+  cursor?: number;
+  limit?: number;
+}
+interface SebasModuleSql {
+  createTable(table: string, columns: Record&lt;string, SebasSqlColumnType&gt;): Promise&lt;void&gt;;
+  insert(table: string, row: SebasSqlRow): Promise&lt;{ id: number }&gt;;
+  select(table: string, options?: SebasSqlSelectOptions): Promise&lt;Array&lt;SebasSqlRow &amp; { id: number }&gt;&gt;;
+  update(table: string, where: Record&lt;string, SebasSqlValue&gt;, patch: SebasSqlRow): Promise&lt;{ changes: number }&gt;;
+  delete(table: string, where: Record&lt;string, SebasSqlValue&gt;): Promise&lt;{ changes: number }&gt;;
+}</pre>
+      <div class="callout"><code>createTable</code> is safe to call every time (idempotent) — both reference modules call it at the top of every function that needs the table, no separate migration step.</div>
+
+      <h2>fetch</h2>
+      <pre>type SebasModuleFetch = (url: string, init?: {
+  method?: string; headers?: Record&lt;string, string&gt;; body?: string;
+}) =&gt; Promise&lt;{
+  status: number; headers: Record&lt;string, string&gt;;
+  text: () =&gt; Promise&lt;string&gt;; json: () =&gt; Promise&lt;unknown&gt;;
+}&gt;;</pre>
+      <div class="callout warn">The host validates against <code>manifest.permissions.network.domains</code> — calling an undeclared hostname is rejected. Declare every domain your module will call.</div>
+
+      <h2>discord</h2>
+      <pre>interface SebasModuleDiscord {
+  sendChannelMessage(channelId: string, content: { content?: string; embeds?: unknown[]; mentionRoleIds?: string[] }): Promise&lt;void&gt;;
+  sendDm(discordUserId: string, content: { content?: string; embeds?: unknown[] }): Promise&lt;void&gt;;
+  editInteractionResponse(applicationId: string, interactionToken: string, content: { content?: string; embeds?: unknown[] }): Promise&lt;void&gt;;
+}</pre>
+      <p>Requires <code>discordPermissions</code> in the manifest: <code>"send-messages"</code> for <code>sendChannelMessage</code>/<code>sendDm</code>, <code>"edit-interactions"</code> for <code>editInteractionResponse</code> — the only two strings checked today.</p>
+
+      <h2>ai</h2>
+      <pre>interface SebasModuleAi { run(request: SebasModuleAiRequest): Promise&lt;SebasModuleAiResult&gt;; }
+interface SebasModuleAiRequest {
+  systemPrompt?: string; userPrompt: string;
+  jsonSchema?: Record&lt;string, unknown&gt;; jsonSchemaName?: string;
+  maxOutputTokens?: number; temperature?: number; usePersona?: boolean;
+}
+interface SebasModuleAiResult { ok: boolean; json?: unknown; text?: string; error?: string; }</pre>
+      <p>Requires <code>dependencies.aiProvider: "core"</code> in the manifest. <code>ctx.ai</code> is <code>null</code> when that isn't declared, or when the bot owner hasn't configured a provider yet — always check before calling <code>.run()</code>.</p>
+
+      <div class="footer-nav">
+        <a href="manifest.html">← 1. Manifest</a>
+        <a href="capabilities.html">3. Capabilities →</a>
+      </div>
+    </div>
+  </main>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

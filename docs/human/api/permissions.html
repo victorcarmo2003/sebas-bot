@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sebas Docs — API: Permissions &amp; Grants</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/docs.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="dot"></span> Sebas Docs</div>
+    <div class="actions">
+      <button class="btn" id="lang-toggle">PT</button>
+      <a class="btn primary" href="../../ai/" target="_blank" rel="noopener">🤖 <span class="lang-pt">Modo IA</span><span class="lang-en">AI mode</span></a>
+    </div>
+  </header>
+
+  <nav class="sidebar">
+    <h3><span class="lang-pt">Primeiros passos</span><span class="lang-en">Getting started</span></h3>
+    <a class="navlink" href="../index.html"><span class="lang-pt">Introdução</span><span class="lang-en">Introduction</span></a>
+    <a class="navlink" href="../quick-usage.html"><span class="lang-pt">Uso rápido</span><span class="lang-en">Quick usage</span></a>
+    <h3><span class="lang-pt">Contrato de módulo</span><span class="lang-en">Module contract</span></h3>
+    <a class="navlink" href="../contracts.html"><span class="lang-pt">Visão geral do contrato</span><span class="lang-en">Contract overview</span></a>
+    <a class="navlink" href="../creating-a-module.html"><span class="lang-pt">Criando um módulo</span><span class="lang-en">Creating a module</span></a>
+    <h3><span class="lang-pt">Referência de API</span><span class="lang-en">API reference</span></h3>
+    <a class="navlink" href="index.html"><span class="lang-pt">Visão geral</span><span class="lang-en">Overview</span></a>
+    <a class="navlink" href="manifest.html">1. Manifest</a>
+    <a class="navlink" href="module-sdk.html">2. Module SDK</a>
+    <a class="navlink" href="capabilities.html">3. Capabilities</a>
+    <a class="navlink" href="tools-and-agent.html">4. Tools &amp; Agent Loop</a>
+    <a class="navlink" href="permissions.html">5. Permissions &amp; Grants</a>
+    <a class="navlink" href="admin-api.html">6. Admin API</a>
+  </nav>
+
+  <main class="content">
+    <div class="lang-pt">
+      <h1>5. Permissions &amp; Grants</h1>
+      <p class="lede">O que seu módulo <em>pede</em> no manifest não é o que ele <em>tem</em> — precisa virar um grant real, aprovado pelo dono.</p>
+
+      <h2>Tipos de grant</h2>
+      <pre>type ModuleGrantType = "adminScope" | "providesScope" | "networkDomain"
+                      | "storage" | "discordPermission" | "aiProviderDependency";</pre>
+      <p>Cada campo em <code>manifest.permissions</code> vira um ou mais itens desse tipo quando o dono aprova.</p>
+
+      <h2>Ciclo de vida (marketplace)</h2>
+      <table>
+        <tr><th>Estado</th><th>O que acontece</th></tr>
+        <tr><td><span class="pill">pending</span></td><td>Módulo clonado, buildado, <code>selfTest()</code> rodou em sandbox (só <code>ctx.storage</code>, zero rede/discord/ai) — nada foi concedido ainda.</td></tr>
+        <tr><td><span class="pill">approved</span></td><td>Dono revisou o diff de permissões pedidas e aprovou — grants gravados, mas o módulo ainda não está rodando de verdade.</td></tr>
+        <tr><td><span class="pill">enabled</span></td><td>Módulo rodando com os grants aprovados, entra no cron (se tiver), fica acessível ao painel/Discord.</td></tr>
+        <tr><td><span class="pill">disabled</span></td><td>Parado, grants preservados — pode ser re-habilitado sem re-aprovar.</td></tr>
+      </table>
+      <div class="callout">Módulos in-tree pulam esse fluxo inteiro: <code>grantedPermissionsForInTreeModule</code> concede tudo que o manifest pede, direto, sem aprovação — o dono do bot é o dono do repo, a confiança já existe.</div>
+
+      <h2>Updates não ampliam permissão sozinhos</h2>
+      <p>Atualizar um módulo (seção "Marketplace / distribuição" do <a href="../../ai/">modo IA</a>) reusa exatamente os grants que já estavam ativos — mesmo que o manifest novo peça algo a mais, isso não vira acesso automático. Re-aprovação em update ainda não está implementada; hoje, se você quer mais permissão, o dono precisa desinstalar e reinstalar.</p>
+
+      <div class="footer-nav">
+        <a href="tools-and-agent.html">← 4. Tools &amp; Agent Loop</a>
+        <a href="admin-api.html">6. Admin API →</a>
+      </div>
+    </div>
+
+    <div class="lang-en">
+      <h1>5. Permissions &amp; Grants</h1>
+      <p class="lede">What your module <em>asks for</em> in the manifest is not what it <em>has</em> — it needs to become a real grant, approved by the owner.</p>
+
+      <h2>Grant types</h2>
+      <pre>type ModuleGrantType = "adminScope" | "providesScope" | "networkDomain"
+                      | "storage" | "discordPermission" | "aiProviderDependency";</pre>
+      <p>Every field under <code>manifest.permissions</code> becomes one or more items of this type once the owner approves.</p>
+
+      <h2>Lifecycle (marketplace)</h2>
+      <table>
+        <tr><th>State</th><th>What happens</th></tr>
+        <tr><td><span class="pill">pending</span></td><td>Module cloned, built, <code>selfTest()</code> ran sandboxed (only <code>ctx.storage</code>, zero network/discord/ai) — nothing granted yet.</td></tr>
+        <tr><td><span class="pill">approved</span></td><td>Owner reviewed the requested-permission diff and approved it — grants recorded, but the module isn't actually running yet.</td></tr>
+        <tr><td><span class="pill">enabled</span></td><td>Module running with the approved grants, joins cron (if any), reachable from the panel/Discord.</td></tr>
+        <tr><td><span class="pill">disabled</span></td><td>Stopped, grants preserved — can be re-enabled without re-approving.</td></tr>
+      </table>
+      <div class="callout">In-tree modules skip this whole flow: <code>grantedPermissionsForInTreeModule</code> grants everything the manifest asks for, directly, no approval — the bot owner owns the repo, trust already exists.</div>
+
+      <h2>Updates never widen permissions on their own</h2>
+      <p>Updating a module (the "Marketplace / distribution" section of <a href="../../ai/">AI mode</a>) reuses exactly the grants that were already active — even if the new manifest asks for more, that doesn't automatically become access. Re-approval on update isn't implemented yet; today, if you need more permission, the owner has to uninstall and reinstall.</p>
+
+      <div class="footer-nav">
+        <a href="tools-and-agent.html">← 4. Tools &amp; Agent Loop</a>
+        <a href="admin-api.html">6. Admin API →</a>
+      </div>
+    </div>
+  </main>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

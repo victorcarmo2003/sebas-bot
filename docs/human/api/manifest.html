@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sebas Docs — API: Manifest</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/docs.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="dot"></span> Sebas Docs</div>
+    <div class="actions">
+      <button class="btn" id="lang-toggle">PT</button>
+      <a class="btn primary" href="../../ai/" target="_blank" rel="noopener">🤖 <span class="lang-pt">Modo IA</span><span class="lang-en">AI mode</span></a>
+    </div>
+  </header>
+
+  <nav class="sidebar">
+    <h3><span class="lang-pt">Primeiros passos</span><span class="lang-en">Getting started</span></h3>
+    <a class="navlink" href="../index.html"><span class="lang-pt">Introdução</span><span class="lang-en">Introduction</span></a>
+    <a class="navlink" href="../quick-usage.html"><span class="lang-pt">Uso rápido</span><span class="lang-en">Quick usage</span></a>
+    <h3><span class="lang-pt">Contrato de módulo</span><span class="lang-en">Module contract</span></h3>
+    <a class="navlink" href="../contracts.html"><span class="lang-pt">Visão geral do contrato</span><span class="lang-en">Contract overview</span></a>
+    <a class="navlink" href="../creating-a-module.html"><span class="lang-pt">Criando um módulo</span><span class="lang-en">Creating a module</span></a>
+    <h3><span class="lang-pt">Referência de API</span><span class="lang-en">API reference</span></h3>
+    <a class="navlink" href="index.html"><span class="lang-pt">Visão geral</span><span class="lang-en">Overview</span></a>
+    <a class="navlink" href="manifest.html">1. Manifest</a>
+    <a class="navlink" href="module-sdk.html">2. Module SDK</a>
+    <a class="navlink" href="capabilities.html">3. Capabilities</a>
+    <a class="navlink" href="tools-and-agent.html">4. Tools &amp; Agent Loop</a>
+    <a class="navlink" href="permissions.html">5. Permissions &amp; Grants</a>
+    <a class="navlink" href="admin-api.html">6. Admin API</a>
+  </nav>
+
+  <main class="content">
+    <div class="lang-pt">
+      <h1>1. Manifest</h1>
+      <p class="lede"><code>sebas.module.json</code>, obrigatório na raiz do repositório do módulo.</p>
+
+      <h2>Schema completo</h2>
+      <pre>interface SebasModuleManifest {
+  schemaVersion: 1;
+  id: string;                    // slug estável, ex. "changelog-roblox"
+  name: string;                  // nome de exibição
+  description?: string;
+  version: string;               // seu próprio semver
+  sebasCompat: string;           // ex. "^1.0.0" — core hoje anuncia "1.0.0", só o MAJOR precisa bater
+  repoUrl: string;                // URL de clone do seu repo (https)
+  capabilities: ModuleCapability[]; // sessão 3
+  entryPoints: Record&lt;string, string | undefined&gt;; // nome da capability -> "dist/xxx.js"
+  cron?: { schedule: string; timeoutMs?: number };  // só se capabilities incluir "cron"
+  discordCommands?: { commands: string[] };          // só se capabilities incluir "discordCommands"
+  webhook?: { publicPath: string };                  // declarado, não implementado — não confie nisso
+  permissions?: {
+    adminScopes?: string[];
+    providesScopes?: string[];
+    network?: { domains: string[] };     // hostnames exatos que ctx.fetch pode chamar
+    storage?: { kind?: "kv" | "sql"; maxMb: number };
+    discordPermissions?: string[];       // "send-messages" | "edit-interactions" (únicos dois checados hoje)
+  };
+  dependencies?: { aiProvider?: string }; // "core" = usa o provedor de IA configurado pelo dono do bot
+  resources: { maxMemoryMb: number };
+}</pre>
+
+      <h3>ModuleCapability</h3>
+      <p><code>"controller" | "cron" | "ui" | "discordCommands" | "tools" | "aiProvider" | "storage" | "webhook" | "permissionGate"</code></p>
+      <div class="callout warn"><strong>Atenção:</strong> <code>"ui"</code>, <code>"aiProvider"</code> (como capability), <code>"storage"</code> (como capability) e <code>"webhook"</code> existem no union de tipos mas não estão implementados em lugar nenhum do core — declarar não faz nada. As cinco reais estão na <a href="capabilities.html">sessão 3</a>.</div>
+
+      <h3>Exemplo real</h3>
+      <p><code>sebas-module-changelog-roblox/sebas.module.json</code>, resumido:</p>
+      <pre>{
+  "schemaVersion": 1,
+  "id": "changelog-roblox",
+  "name": "Changelog do Roblox",
+  "version": "1.0.0",
+  "sebasCompat": "^1.0.0",
+  "repoUrl": "https://github.com/victorcarmo2003/sebas-module-changelog-roblox",
+  "capabilities": ["controller", "cron", "discordCommands"],
+  "entryPoints": {
+    "controller": "dist/controller.js",
+    "chronos": "dist/cron.js",
+    "discordCommands": "dist/discord-commands.js"
+  },
+  "cron": { "schedule": "7,37 * * * *", "timeoutMs": 600000 },
+  "discordCommands": { "commands": ["setup", "teste"] },
+  "permissions": {
+    "network": { "domains": ["robloxapi.github.io", "create.roblox.com"] },
+    "storage": { "kind": "sql", "maxMb": 64 },
+    "discordPermissions": ["send-messages", "edit-interactions"]
+  },
+  "dependencies": { "aiProvider": "core" },
+  "resources": { "maxMemoryMb": 96 }
+}</pre>
+      <div class="callout warn">Repare: a chave de <code>entryPoints</code> pra capability <code>cron</code> é <code>"chronos"</code>, não <code>"cron"</code>. <code>manifest.cron</code> é a configuração do agendamento; <code>entryPoints.chronos</code> é o caminho do arquivo. Fácil de confundir.</div>
+
+      <div class="footer-nav">
+        <a href="index.html">← Visão geral</a>
+        <a href="module-sdk.html">2. Module SDK →</a>
+      </div>
+    </div>
+
+    <div class="lang-en">
+      <h1>1. Manifest</h1>
+      <p class="lede"><code>sebas.module.json</code>, required at the root of the module's repository.</p>
+
+      <h2>Full schema</h2>
+      <pre>interface SebasModuleManifest {
+  schemaVersion: 1;
+  id: string;                    // stable slug, e.g. "changelog-roblox"
+  name: string;                  // display name
+  description?: string;
+  version: string;               // your own semver
+  sebasCompat: string;           // e.g. "^1.0.0" — core currently announces "1.0.0", only MAJOR must match
+  repoUrl: string;                // your repo's clone URL (https)
+  capabilities: ModuleCapability[]; // section 3
+  entryPoints: Record&lt;string, string | undefined&gt;; // capability name -> "dist/xxx.js"
+  cron?: { schedule: string; timeoutMs?: number };  // only if capabilities includes "cron"
+  discordCommands?: { commands: string[] };          // only if capabilities includes "discordCommands"
+  webhook?: { publicPath: string };                  // declared, not implemented — don't rely on it
+  permissions?: {
+    adminScopes?: string[];
+    providesScopes?: string[];
+    network?: { domains: string[] };     // exact hostnames your ctx.fetch may call
+    storage?: { kind?: "kv" | "sql"; maxMb: number };
+    discordPermissions?: string[];       // "send-messages" | "edit-interactions" (only two checked today)
+  };
+  dependencies?: { aiProvider?: string }; // "core" = use the bot owner's configured AI provider
+  resources: { maxMemoryMb: number };
+}</pre>
+
+      <h3>ModuleCapability</h3>
+      <p><code>"controller" | "cron" | "ui" | "discordCommands" | "tools" | "aiProvider" | "storage" | "webhook" | "permissionGate"</code></p>
+      <div class="callout warn"><strong>Careful:</strong> <code>"ui"</code>, <code>"aiProvider"</code> (as a capability), <code>"storage"</code> (as a capability) and <code>"webhook"</code> exist in the type union but aren't implemented anywhere in core — declaring them does nothing. The five real ones are in <a href="capabilities.html">section 3</a>.</div>
+
+      <h3>Real example</h3>
+      <p><code>sebas-module-changelog-roblox/sebas.module.json</code>, trimmed:</p>
+      <pre>{
+  "schemaVersion": 1,
+  "id": "changelog-roblox",
+  "name": "Changelog do Roblox",
+  "version": "1.0.0",
+  "sebasCompat": "^1.0.0",
+  "repoUrl": "https://github.com/victorcarmo2003/sebas-module-changelog-roblox",
+  "capabilities": ["controller", "cron", "discordCommands"],
+  "entryPoints": {
+    "controller": "dist/controller.js",
+    "chronos": "dist/cron.js",
+    "discordCommands": "dist/discord-commands.js"
+  },
+  "cron": { "schedule": "7,37 * * * *", "timeoutMs": 600000 },
+  "discordCommands": { "commands": ["setup", "teste"] },
+  "permissions": {
+    "network": { "domains": ["robloxapi.github.io", "create.roblox.com"] },
+    "storage": { "kind": "sql", "maxMb": 64 },
+    "discordPermissions": ["send-messages", "edit-interactions"]
+  },
+  "dependencies": { "aiProvider": "core" },
+  "resources": { "maxMemoryMb": 96 }
+}</pre>
+      <div class="callout warn">Note: the <code>entryPoints</code> key for the <code>cron</code> capability is <code>"chronos"</code>, not <code>"cron"</code>. <code>manifest.cron</code> is the schedule config; <code>entryPoints.chronos</code> is the file path. Easy to mix up.</div>
+
+      <div class="footer-nav">
+        <a href="index.html">← Overview</a>
+        <a href="module-sdk.html">2. Module SDK →</a>
+      </div>
+    </div>
+  </main>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

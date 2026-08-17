@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sebas Docs — Contract Overview</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="assets/docs.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="dot"></span> Sebas Docs</div>
+    <div class="actions">
+      <button class="btn" id="lang-toggle">PT</button>
+      <a class="btn primary" href="../ai/" target="_blank" rel="noopener">🤖 <span class="lang-pt">Modo IA</span><span class="lang-en">AI mode</span></a>
+    </div>
+  </header>
+
+  <nav class="sidebar">
+    <h3><span class="lang-pt">Primeiros passos</span><span class="lang-en">Getting started</span></h3>
+    <a class="navlink" href="index.html"><span class="lang-pt">Introdução</span><span class="lang-en">Introduction</span></a>
+    <a class="navlink" href="quick-usage.html"><span class="lang-pt">Uso rápido</span><span class="lang-en">Quick usage</span></a>
+    <h3><span class="lang-pt">Contrato de módulo</span><span class="lang-en">Module contract</span></h3>
+    <a class="navlink" href="contracts.html"><span class="lang-pt">Visão geral do contrato</span><span class="lang-en">Contract overview</span></a>
+    <a class="navlink" href="creating-a-module.html"><span class="lang-pt">Criando um módulo</span><span class="lang-en">Creating a module</span></a>
+    <h3><span class="lang-pt">Referência de API</span><span class="lang-en">API reference</span></h3>
+    <a class="navlink" href="api/index.html"><span class="lang-pt">Visão geral</span><span class="lang-en">Overview</span></a>
+    <a class="navlink" href="api/manifest.html">1. Manifest</a>
+    <a class="navlink" href="api/module-sdk.html">2. Module SDK</a>
+    <a class="navlink" href="api/capabilities.html">3. Capabilities</a>
+    <a class="navlink" href="api/tools-and-agent.html">4. Tools &amp; Agent Loop</a>
+    <a class="navlink" href="api/permissions.html">5. Permissions &amp; Grants</a>
+    <a class="navlink" href="api/admin-api.html">6. Admin API</a>
+  </nav>
+
+  <main class="content">
+    <div class="lang-pt">
+      <h1>Visão geral do contrato</h1>
+      <p class="lede">Um módulo Sebas é um pacote npm pequeno com um manifest e um punhado de arquivos compilados, rodando isolado numa <code>worker_thread</code>.</p>
+
+      <h2>As três peças</h2>
+      <div class="grid-cards">
+        <div class="card"><h4>Manifest</h4><p><code>sebas.module.json</code> na raiz do repo — declara id, capabilities, entrypoints e permissões pedidas. Ver <a href="api/manifest.html">API → Manifest</a>.</p></div>
+        <div class="card"><h4>Entrypoints</h4><p>Um arquivo <code>.js</code> compilado por capability declarada — o core carrega sob demanda. Ver <a href="api/capabilities.html">API → Capabilities</a>.</p></div>
+        <div class="card"><h4>Context (SDK)</h4><p><code>SebasModuleContext</code> — o único jeito do seu código tocar storage/rede/Discord/IA, tudo validado contra as permissões concedidas. Ver <a href="api/module-sdk.html">API → Module SDK</a>.</p></div>
+      </div>
+
+      <h2>Como o core executa isso</h2>
+      <ol>
+        <li>Lê <code>sebas.module.json</code>, resolve os paths de <code>entryPoints</code> pra absolutos.</li>
+        <li>Sobe uma <code>worker_thread</code> nova, passa esses paths pra dentro.</li>
+        <li>Dentro da worker, um dispatcher genérico (<code>runner.ts</code>) importa o entrypoint certo sob demanda e chama o método correspondente à capability (<code>handleRequest</code>, <code>run</code>, <code>handleCommand</code>, <code>callTool</code>, <code>checkGate</code>).</li>
+        <li>Toda chamada de <code>ctx.*</code> dentro da worker vira uma mensagem RPC de volta pro processo principal, que checa permissão e executa de verdade.</li>
+      </ol>
+      <div class="callout">Seu módulo nunca tem acesso direto a filesystem, rede ou child_process do host — só o que passa pelo <code>ctx</code>, e só o que foi concedido.</div>
+
+      <h2>Duas formas de existir</h2>
+      <table>
+        <tr><th></th><th>In-tree</th><th>Marketplace</th></tr>
+        <tr><td>Onde mora</td><td>Dentro do monorepo <code>sebas-bot</code></td><td>Repositório git próprio, público</td></tr>
+        <tr><td>Confiança</td><td>Automática (dono do bot é o dono do repo)</td><td>Precisa de aprovação explícita do dono a cada permissão nova</td></tr>
+        <tr><td>Atualização</td><td>Via <code>git pull</code> do próprio monorepo</td><td>Botão "Atualizar" no painel, ou auto-update</td></tr>
+      </table>
+      <p>Se você está escrevendo um módulo pra <strong>compartilhar</strong>, o caminho é sempre marketplace: repositório público próprio, ver <a href="creating-a-module.html">Criando um módulo</a>.</p>
+
+      <div class="footer-nav">
+        <a href="quick-usage.html">← Uso rápido</a>
+        <a href="creating-a-module.html">Criando um módulo →</a>
+      </div>
+    </div>
+
+    <div class="lang-en">
+      <h1>Contract overview</h1>
+      <p class="lede">A Sebas module is a small npm package with a manifest and a handful of compiled files, running isolated inside a <code>worker_thread</code>.</p>
+
+      <h2>The three pieces</h2>
+      <div class="grid-cards">
+        <div class="card"><h4>Manifest</h4><p><code>sebas.module.json</code> at the repo root — declares id, capabilities, entrypoints, and requested permissions. See <a href="api/manifest.html">API → Manifest</a>.</p></div>
+        <div class="card"><h4>Entrypoints</h4><p>One compiled <code>.js</code> file per declared capability — core loads them on demand. See <a href="api/capabilities.html">API → Capabilities</a>.</p></div>
+        <div class="card"><h4>Context (SDK)</h4><p><code>SebasModuleContext</code> — the only way your code touches storage/network/Discord/AI, all validated against what was granted. See <a href="api/module-sdk.html">API → Module SDK</a>.</p></div>
+      </div>
+
+      <h2>How core runs this</h2>
+      <ol>
+        <li>Reads <code>sebas.module.json</code>, resolves <code>entryPoints</code> paths to absolute.</li>
+        <li>Spawns a new <code>worker_thread</code>, passes those paths in.</li>
+        <li>Inside the worker, a generic dispatcher (<code>runner.ts</code>) lazily imports the right entrypoint and calls the method matching the capability (<code>handleRequest</code>, <code>run</code>, <code>handleCommand</code>, <code>callTool</code>, <code>checkGate</code>).</li>
+        <li>Every <code>ctx.*</code> call inside the worker becomes an RPC message back to the main process, which checks permissions and actually executes it.</li>
+      </ol>
+      <div class="callout">Your module never has direct access to the host's filesystem, network, or child_process — only what flows through <code>ctx</code>, and only what was granted.</div>
+
+      <h2>Two ways to exist</h2>
+      <table>
+        <tr><th></th><th>In-tree</th><th>Marketplace</th></tr>
+        <tr><td>Where it lives</td><td>Inside the <code>sebas-bot</code> monorepo</td><td>Its own public git repository</td></tr>
+        <tr><td>Trust</td><td>Automatic (bot owner owns the repo)</td><td>Needs explicit owner approval for every new permission</td></tr>
+        <tr><td>Updates</td><td>Via <code>git pull</code> on the monorepo itself</td><td>"Update" button in the panel, or auto-update</td></tr>
+      </table>
+      <p>If you're writing a module to <strong>share</strong>, the path is always marketplace: your own public repo, see <a href="creating-a-module.html">Creating a module</a>.</p>
+
+      <div class="footer-nav">
+        <a href="quick-usage.html">← Quick usage</a>
+        <a href="creating-a-module.html">Creating a module →</a>
+      </div>
+    </div>
+  </main>
+
+  <script src="assets/docs.js"></script>
+</body>
+</html>

@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sebas Docs — API: Capabilities</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/docs.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="dot"></span> Sebas Docs</div>
+    <div class="actions">
+      <button class="btn" id="lang-toggle">PT</button>
+      <a class="btn primary" href="../../ai/" target="_blank" rel="noopener">🤖 <span class="lang-pt">Modo IA</span><span class="lang-en">AI mode</span></a>
+    </div>
+  </header>
+
+  <nav class="sidebar">
+    <h3><span class="lang-pt">Primeiros passos</span><span class="lang-en">Getting started</span></h3>
+    <a class="navlink" href="../index.html"><span class="lang-pt">Introdução</span><span class="lang-en">Introduction</span></a>
+    <a class="navlink" href="../quick-usage.html"><span class="lang-pt">Uso rápido</span><span class="lang-en">Quick usage</span></a>
+    <h3><span class="lang-pt">Contrato de módulo</span><span class="lang-en">Module contract</span></h3>
+    <a class="navlink" href="../contracts.html"><span class="lang-pt">Visão geral do contrato</span><span class="lang-en">Contract overview</span></a>
+    <a class="navlink" href="../creating-a-module.html"><span class="lang-pt">Criando um módulo</span><span class="lang-en">Creating a module</span></a>
+    <h3><span class="lang-pt">Referência de API</span><span class="lang-en">API reference</span></h3>
+    <a class="navlink" href="index.html"><span class="lang-pt">Visão geral</span><span class="lang-en">Overview</span></a>
+    <a class="navlink" href="manifest.html">1. Manifest</a>
+    <a class="navlink" href="module-sdk.html">2. Module SDK</a>
+    <a class="navlink" href="capabilities.html">3. Capabilities</a>
+    <a class="navlink" href="tools-and-agent.html">4. Tools &amp; Agent Loop</a>
+    <a class="navlink" href="permissions.html">5. Permissions &amp; Grants</a>
+    <a class="navlink" href="admin-api.html">6. Admin API</a>
+  </nav>
+
+  <main class="content">
+    <div class="lang-pt">
+      <h1>3. Capabilities</h1>
+      <p class="lede">Cinco capabilities reais, cada uma com um entrypoint próprio. Um módulo pode declarar mais de uma.</p>
+
+      <h2>controller</h2>
+      <p>Superfície HTTP genérica — como o painel fala com a tela de configurações do seu módulo.</p>
+      <pre>interface SebasModuleController {
+  handleRequest(ctx, req: SebasControllerRequest): Promise&lt;SebasControllerResponse&gt;;
+  selfTest(ctx): Promise&lt;void&gt;;   // chamado uma vez na instalação, em sandbox (sessão 5)
+}
+interface SebasControllerRequest { method: string; path: string; query: Record&lt;string,string&gt;; headers: Record&lt;string,string&gt;; body: unknown; }
+interface SebasControllerResponse { status: number; body: unknown; }</pre>
+      <p>Montado em <code>/api/admin/modules/:seuModuleId/controller/*</code> — <code>req.path</code> já chega sem esse prefixo (uma requisição pra <code>.../permissions/controller/gates/dm</code> chega como <code>req.path = "/gates/dm"</code>). Não existe capability declarativa de UI (apesar de <code>"ui"</code> existir no union de tipos) — você escreve a tela do painel à mão, chamando este controller.</p>
+
+      <h2>cron</h2>
+      <p>Trabalho periódico em background.</p>
+      <pre>interface SebasModuleChronos { run(ctx): Promise&lt;void&gt;; }</pre>
+      <p>Agendado por <code>manifest.cron.schedule</code> (cron padrão de 5 campos, hora local do host). Roda síncrono até terminar — não existe fila assíncrona separada consumindo trabalho de módulo ainda (a tabela de jobs existe como infra genérica, mas nada drena pra módulo hoje). Faça o polling/trabalho direto dentro de <code>run()</code>.</p>
+
+      <h2>discordCommands</h2>
+      <p>Slash commands.</p>
+      <pre>interface SebasModuleDiscordCommandDefinition { name: string; description: string; }
+interface SebasModuleDiscordCommands {
+  commands: SebasModuleDiscordCommandDefinition[];
+  handleCommand(ctx, commandName: string, interaction: unknown): Promise&lt;{ content: string } | void&gt;;
+}</pre>
+      <p>Precisa listar os mesmos nomes em <code>manifest.discordCommands.commands</code>. O core defere a interaction (Discord mostra "pensando...") e chama <code>handleCommand</code>; você termina retornando <code>{ content }</code> (edita a resposta deferida sozinho) OU chamando <code>ctx.discord.editInteractionResponse</code> você mesmo e retornando <code>void</code>.</p>
+
+      <h2>tools</h2>
+      <p>Tools de function-calling que a IA pode chamar.</p>
+      <pre>interface SebasToolDefinition { name: string; description: string; parameters: Record&lt;string, unknown&gt;; } // JSON Schema, formato OpenAI
+interface SebasToolCallResult { ok: boolean; result?: unknown; error?: string; }
+interface SebasModuleTools {
+  tools: SebasToolDefinition[];
+  callTool(ctx, name: string, args: Record&lt;string, unknown&gt;): Promise&lt;SebasToolCallResult&gt;;
+}</pre>
+      <p>O registry do core qualifica todo nome de tool como <code>module:&lt;seu-id&gt;:&lt;nome&gt;</code> antes de mostrar pra IA — não prefixe você mesmo. Detalhes em <a href="tools-and-agent.html">sessão 4</a>.</p>
+
+      <h2>permissionGate</h2>
+      <p>Hook de controle de acesso — usado pelo módulo <code>permissions</code> de referência.</p>
+      <pre>interface PermissionGateRequest {
+  discordUserId: string; guildId: string | null; roleIds: string[];
+  surface: "dm" | "mention" | "slash_command"; isOwner: boolean;
+}
+interface PermissionGateResult { canRespond: boolean; allowedTools: string[] | "all"; }
+interface SebasModulePermissionGate {
+  checkGate(ctx, req: PermissionGateRequest): Promise&lt;PermissionGateResult&gt;;
+}</pre>
+      <p>O core chama isso (se um módulo desses estiver instalado e habilitado) antes de responder qualquer DM/menção/slash command, e antes de deixar o agent-loop passar tools pra IA. Sem módulo instalado, ou se ele lançar erro, o core falha seguro: só o dono configurado recebe <code>canRespond=true</code>/<code>allowedTools="all"</code>, todo o resto é ignorado silenciosamente.</p>
+      <div class="callout">Implementação de referência completa (modo everyone/whitelist/blacklist por surface, regras por cargo, allowlist global de tools): <a href="https://github.com/victorcarmo2003/sebas-module-permissions" target="_blank" rel="noopener">sebas-module-permissions</a>.</div>
+
+      <div class="footer-nav">
+        <a href="module-sdk.html">← 2. Module SDK</a>
+        <a href="tools-and-agent.html">4. Tools &amp; Agent Loop →</a>
+      </div>
+    </div>
+
+    <div class="lang-en">
+      <h1>3. Capabilities</h1>
+      <p class="lede">Five real capabilities, each with its own entrypoint. A module can declare more than one.</p>
+
+      <h2>controller</h2>
+      <p>Generic HTTP surface — how the panel talks to your module's settings screen.</p>
+      <pre>interface SebasModuleController {
+  handleRequest(ctx, req: SebasControllerRequest): Promise&lt;SebasControllerResponse&gt;;
+  selfTest(ctx): Promise&lt;void&gt;;   // called once at install time, sandboxed (section 5)
+}
+interface SebasControllerRequest { method: string; path: string; query: Record&lt;string,string&gt;; headers: Record&lt;string,string&gt;; body: unknown; }
+interface SebasControllerResponse { status: number; body: unknown; }</pre>
+      <p>Mounted at <code>/api/admin/modules/:yourModuleId/controller/*</code> — <code>req.path</code> arrives already stripped of that prefix (a request to <code>.../permissions/controller/gates/dm</code> arrives as <code>req.path = "/gates/dm"</code>). There's no declarative UI capability (despite <code>"ui"</code> existing in the type union) — you hand-write the panel screen, calling this controller.</p>
+
+      <h2>cron</h2>
+      <p>Periodic background work.</p>
+      <pre>interface SebasModuleChronos { run(ctx): Promise&lt;void&gt;; }</pre>
+      <p>Scheduled per <code>manifest.cron.schedule</code> (standard 5-field cron, host local time). Runs synchronously to completion — there's no separate async job queue consuming module work yet (the jobs table exists as generic infrastructure, but nothing drains it for modules today). Do your polling/work directly inside <code>run()</code>.</p>
+
+      <h2>discordCommands</h2>
+      <p>Slash commands.</p>
+      <pre>interface SebasModuleDiscordCommandDefinition { name: string; description: string; }
+interface SebasModuleDiscordCommands {
+  commands: SebasModuleDiscordCommandDefinition[];
+  handleCommand(ctx, commandName: string, interaction: unknown): Promise&lt;{ content: string } | void&gt;;
+}</pre>
+      <p>Must list the same names in <code>manifest.discordCommands.commands</code>. Core defers the interaction (Discord shows "thinking...") and calls <code>handleCommand</code>; you finish by returning <code>{ content }</code> (auto-edits the deferred response) OR by calling <code>ctx.discord.editInteractionResponse</code> yourself and returning <code>void</code>.</p>
+
+      <h2>tools</h2>
+      <p>Function-calling tools the AI can invoke.</p>
+      <pre>interface SebasToolDefinition { name: string; description: string; parameters: Record&lt;string, unknown&gt;; } // JSON Schema, OpenAI format
+interface SebasToolCallResult { ok: boolean; result?: unknown; error?: string; }
+interface SebasModuleTools {
+  tools: SebasToolDefinition[];
+  callTool(ctx, name: string, args: Record&lt;string, unknown&gt;): Promise&lt;SebasToolCallResult&gt;;
+}</pre>
+      <p>Core's registry qualifies every tool name as <code>module:&lt;your-id&gt;:&lt;name&gt;</code> before showing it to the AI — don't prefix it yourself. Details in <a href="tools-and-agent.html">section 4</a>.</p>
+
+      <h2>permissionGate</h2>
+      <p>Access-control hook — used by the reference <code>permissions</code> module.</p>
+      <pre>interface PermissionGateRequest {
+  discordUserId: string; guildId: string | null; roleIds: string[];
+  surface: "dm" | "mention" | "slash_command"; isOwner: boolean;
+}
+interface PermissionGateResult { canRespond: boolean; allowedTools: string[] | "all"; }
+interface SebasModulePermissionGate {
+  checkGate(ctx, req: PermissionGateRequest): Promise&lt;PermissionGateResult&gt;;
+}</pre>
+      <p>Core calls this (if such a module is installed and enabled) before answering any DM/mention/slash command, and before letting the agent-loop pass tools to the AI. With no module installed, or if it throws, core fails safe: only the configured owner gets <code>canRespond=true</code>/<code>allowedTools="all"</code>, everyone else is silently ignored.</p>
+      <div class="callout">Full reference implementation (everyone/whitelist/blacklist mode per surface, role-based rules, global tool allowlist): <a href="https://github.com/victorcarmo2003/sebas-module-permissions" target="_blank" rel="noopener">sebas-module-permissions</a>.</div>
+
+      <div class="footer-nav">
+        <a href="module-sdk.html">← 2. Module SDK</a>
+        <a href="tools-and-agent.html">4. Tools &amp; Agent Loop →</a>
+      </div>
+    </div>
+  </main>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sebas Docs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{--ink:#0a0a0a;--panel:#151515;--brass:#2e2e2e;--parchment:#f7f7f7;--parchment-muted:#b8b8b8;--gold:#d4af37;--gold-bright:#f0cc5c}
+  html,body{margin:0;height:100%;background:var(--ink);color:var(--parchment);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif}
+  .wrap{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem;text-align:center}
+  .dot{width:10px;height:10px;border-radius:999px;background:var(--gold);display:inline-block;margin-right:.5rem}
+  h1{font-size:1.4rem;margin:0 0 .4rem}
+  p{color:var(--parchment-muted);max-width:34rem;line-height:1.6;margin:0 0 2rem}
+  .choices{display:flex;gap:1rem;flex-wrap:wrap;justify-content:center}
+  .choice{width:230px;border:1px solid var(--brass);background:var(--panel);border-radius:12px;padding:1.4rem;cursor:pointer;transition:border-color .15s;text-decoration:none;color:inherit}
+  .choice:hover{border-color:var(--gold)}
+  .choice .icon{font-size:1.6rem;margin-bottom:.5rem}
+  .choice h2{font-size:1rem;margin:0 0 .35rem;color:var(--parchment)}
+  .choice small{color:var(--parchment-muted);font-size:.78rem;line-height:1.5;display:block}
+  .skip{margin-top:1.6rem;font-size:.78rem;color:#7d7d7d}
+  .skip a{color:#7d7d7d}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1><span class="dot"></span>Sebas Documentation</h1>
+    <p>Choose how you want to read this. Your choice is remembered on this device — you can switch anytime from the button in the top-right corner.</p>
+    <div class="choices">
+      <a class="choice" href="human/" id="human-choice">
+        <div class="icon">👤</div>
+        <h2>I'm a human</h2>
+        <small>Styled site, sidebar navigation, PT/EN toggle. Introduction, quick usage, module contract, full API reference, and a guide to building a module.</small>
+      </a>
+      <a class="choice" href="ai/" id="ai-choice">
+        <div class="icon">🤖</div>
+        <h2>I'm an AI / coding agent</h2>
+        <small>Single plain-text page, no CSS, full technical spec in one fetch. Give this link to an LLM to vibecode a Sebas module.</small>
+      </a>
+    </div>
+    <p class="skip">Direct links: <a href="human/">/docs/human/</a> · <a href="ai/">/docs/ai/</a></p>
+  </div>
+  <script>
+    (function () {
+      var KEY = "sebas-docs-mode";
+      var remembered = localStorage.getItem(KEY);
+      if (remembered === "human" || remembered === "ai") {
+        location.replace(remembered + "/");
+        return;
+      }
+      document.getElementById("human-choice").addEventListener("click", function () { localStorage.setItem(KEY, "human"); });
+      document.getElementById("ai-choice").addEventListener("click", function () { localStorage.setItem(KEY, "ai"); });
+    })();
+  </script>
+</body>
+</html>

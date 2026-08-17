@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sebas Docs — Creating a Module</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="assets/docs.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="dot"></span> Sebas Docs</div>
+    <div class="actions">
+      <button class="btn" id="lang-toggle">PT</button>
+      <a class="btn primary" href="../ai/" target="_blank" rel="noopener">🤖 <span class="lang-pt">Modo IA</span><span class="lang-en">AI mode</span></a>
+    </div>
+  </header>
+
+  <nav class="sidebar">
+    <h3><span class="lang-pt">Primeiros passos</span><span class="lang-en">Getting started</span></h3>
+    <a class="navlink" href="index.html"><span class="lang-pt">Introdução</span><span class="lang-en">Introduction</span></a>
+    <a class="navlink" href="quick-usage.html"><span class="lang-pt">Uso rápido</span><span class="lang-en">Quick usage</span></a>
+    <h3><span class="lang-pt">Contrato de módulo</span><span class="lang-en">Module contract</span></h3>
+    <a class="navlink" href="contracts.html"><span class="lang-pt">Visão geral do contrato</span><span class="lang-en">Contract overview</span></a>
+    <a class="navlink" href="creating-a-module.html"><span class="lang-pt">Criando um módulo</span><span class="lang-en">Creating a module</span></a>
+    <h3><span class="lang-pt">Referência de API</span><span class="lang-en">API reference</span></h3>
+    <a class="navlink" href="api/index.html"><span class="lang-pt">Visão geral</span><span class="lang-en">Overview</span></a>
+    <a class="navlink" href="api/manifest.html">1. Manifest</a>
+    <a class="navlink" href="api/module-sdk.html">2. Module SDK</a>
+    <a class="navlink" href="api/capabilities.html">3. Capabilities</a>
+    <a class="navlink" href="api/tools-and-agent.html">4. Tools &amp; Agent Loop</a>
+    <a class="navlink" href="api/permissions.html">5. Permissions &amp; Grants</a>
+    <a class="navlink" href="api/admin-api.html">6. Admin API</a>
+  </nav>
+
+  <main class="content">
+    <div class="lang-pt">
+      <h1>Criando um módulo</h1>
+      <p class="lede">Do zero até instalado no seu Sebas — usando um módulo mínimo, só-tools, como exemplo.</p>
+
+      <div class="callout">Quer que uma IA escreva o módulo pra você? Manda o link do <a href="../ai/">modo IA</a> pra ela — tem a spec técnica inteira num único documento em texto plano.</div>
+
+      <h2>1. Estrutura do repositório</h2>
+      <pre>seu-modulo/
+  sebas.module.json
+  package.json
+  tsconfig.json
+  src/
+    sebas-types.ts   (copie as interfaces da sessão 2 da API que seu módulo usa)
+    tools.ts</pre>
+
+      <h2>2. package.json</h2>
+      <pre>{
+  "name": "sebas-module-dice-roller",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "tsc -p ." },
+  "devDependencies": { "typescript": "^5.7.0", "@types/node": "^22.10.0" }
+}</pre>
+
+      <h2>3. tsconfig.json</h2>
+      <pre>{
+  "compilerOptions": {
+    "target": "ES2023", "lib": ["ES2023"],
+    "module": "NodeNext", "moduleResolution": "NodeNext",
+    "outDir": "dist", "rootDir": "src",
+    "strict": true, "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true, "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"]
+}</pre>
+      <div class="callout warn">Toda import relativa no seu <code>.ts</code> termina em <code>.js</code>, mesmo o arquivo fonte sendo <code>.ts</code> — comportamento padrão do NodeNext, não é peculiaridade do Sebas, mas pega muita gente.</div>
+
+      <h2>4. sebas.module.json</h2>
+      <pre>{
+  "schemaVersion": 1, "id": "dice-roller", "name": "Dice Roller",
+  "version": "1.0.0", "sebasCompat": "^1.0.0",
+  "repoUrl": "https://github.com/voce/sebas-module-dice-roller",
+  "capabilities": ["tools"],
+  "entryPoints": { "tools": "dist/tools.js" },
+  "resources": { "maxMemoryMb": 32 }
+}</pre>
+
+      <h2>5. src/tools.ts</h2>
+      <pre>import type { SebasModuleContext, SebasModuleTools } from "./sebas-types.js";
+
+const tools: SebasModuleTools = {
+  tools: [{
+    name: "roll_dice",
+    description: "Rola um dado de N lados e devolve o resultado.",
+    parameters: { type: "object", properties: { sides: { type: "number" } }, required: ["sides"] }
+  }],
+  async callTool(ctx: SebasModuleContext, name, args) {
+    if (name !== "roll_dice") return { ok: false, error: "unknown tool" };
+    const sides = Number((args as { sides: unknown }).sides) || 6;
+    return { ok: true, result: { rolled: 1 + Math.floor(Math.random() * sides) } };
+  }
+};
+export default tools;</pre>
+      <p>Sem storage, sem rede, sem permissão de Discord — o manifest não declara nada além de <code>tools</code>, então é isso que ele recebe.</p>
+
+      <h2>6. Build, publique, instale</h2>
+      <ol>
+        <li><code>npm install &amp;&amp; npm run build</code> localmente pra conferir que compila.</li>
+        <li>Suba num repositório <strong>público</strong> no GitHub com <code>sebas.module.json</code> na raiz.</li>
+        <li>No painel do seu Sebas: <code>/modules/marketplace</code>, cole a URL do repo (ou deixe a busca achar), clique "Clonar e validar".</li>
+        <li>Revise o diff de permissões (nesse exemplo, nenhuma) e aprove.</li>
+        <li>Habilite. Pronto — a tool <code>module:dice-roller:roll_dice</code> já aparece pra IA na próxima conversa.</li>
+      </ol>
+
+      <h2>Quer algo mais completo?</h2>
+      <p>Os dois módulos de referência cobrem os outros quatro casos:</p>
+      <ul>
+        <li><a href="https://github.com/victorcarmo2003/sebas-module-changelog-roblox" target="_blank" rel="noopener">sebas-module-changelog-roblox</a> — <code>controller</code> (tela própria no painel) + <code>cron</code> (polling periódico) + <code>discordCommands</code> + <code>sql</code> + rede externa + IA.</li>
+        <li><a href="https://github.com/victorcarmo2003/sebas-module-permissions" target="_blank" rel="noopener">sebas-module-permissions</a> — <code>controller</code> + <code>permissionGate</code>, sem rede nem IA.</li>
+      </ul>
+
+      <h2>Checklist rápido</h2>
+      <ul>
+        <li>Toda import relativa termina em <code>.js</code>.</li>
+        <li><code>entryPoints.chronos</code>, não <code>entryPoints.cron</code>.</li>
+        <li><code>selfTest()</code> só pode depender de <code>ctx.storage</code>.</li>
+        <li>Todo hostname que <code>ctx.fetch</code> chama está em <code>permissions.network.domains</code>.</li>
+        <li><code>ctx.ai</code> pode ser <code>null</code> — sempre cheque antes de <code>.run()</code>.</li>
+        <li><code>"ui"</code> / <code>"aiProvider"</code> / <code>"storage"</code> (como capability) / <code>"webhook"</code> não fazem nada — não conte com eles.</li>
+      </ul>
+
+      <div class="footer-nav">
+        <a href="contracts.html">← Visão geral do contrato</a>
+        <a href="api/index.html">Referência de API →</a>
+      </div>
+    </div>
+
+    <div class="lang-en">
+      <h1>Creating a module</h1>
+      <p class="lede">From nothing to installed on your Sebas — using a minimal, tools-only module as the example.</p>
+
+      <div class="callout">Want an AI to write the module for you? Send it the <a href="../ai/">AI mode</a> link — it has the entire technical spec in one plain-text document.</div>
+
+      <h2>1. Repository layout</h2>
+      <pre>your-module/
+  sebas.module.json
+  package.json
+  tsconfig.json
+  src/
+    sebas-types.ts   (copy the interfaces from API section 2 your module uses)
+    tools.ts</pre>
+
+      <h2>2. package.json</h2>
+      <pre>{
+  "name": "sebas-module-dice-roller",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "build": "tsc -p ." },
+  "devDependencies": { "typescript": "^5.7.0", "@types/node": "^22.10.0" }
+}</pre>
+
+      <h2>3. tsconfig.json</h2>
+      <pre>{
+  "compilerOptions": {
+    "target": "ES2023", "lib": ["ES2023"],
+    "module": "NodeNext", "moduleResolution": "NodeNext",
+    "outDir": "dist", "rootDir": "src",
+    "strict": true, "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true, "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts"]
+}</pre>
+      <div class="callout warn">Every relative import in your <code>.ts</code> ends in <code>.js</code>, even though the source file is <code>.ts</code> — standard NodeNext behavior, not a Sebas quirk, but it trips a lot of people up.</div>
+
+      <h2>4. sebas.module.json</h2>
+      <pre>{
+  "schemaVersion": 1, "id": "dice-roller", "name": "Dice Roller",
+  "version": "1.0.0", "sebasCompat": "^1.0.0",
+  "repoUrl": "https://github.com/you/sebas-module-dice-roller",
+  "capabilities": ["tools"],
+  "entryPoints": { "tools": "dist/tools.js" },
+  "resources": { "maxMemoryMb": 32 }
+}</pre>
+
+      <h2>5. src/tools.ts</h2>
+      <pre>import type { SebasModuleContext, SebasModuleTools } from "./sebas-types.js";
+
+const tools: SebasModuleTools = {
+  tools: [{
+    name: "roll_dice",
+    description: "Rolls an N-sided die and returns the result.",
+    parameters: { type: "object", properties: { sides: { type: "number" } }, required: ["sides"] }
+  }],
+  async callTool(ctx: SebasModuleContext, name, args) {
+    if (name !== "roll_dice") return { ok: false, error: "unknown tool" };
+    const sides = Number((args as { sides: unknown }).sides) || 6;
+    return { ok: true, result: { rolled: 1 + Math.floor(Math.random() * sides) } };
+  }
+};
+export default tools;</pre>
+      <p>No storage, no network, no Discord permission — the manifest declares nothing beyond <code>tools</code>, so that's all it gets.</p>
+
+      <h2>6. Build, publish, install</h2>
+      <ol>
+        <li><code>npm install &amp;&amp; npm run build</code> locally to confirm it compiles.</li>
+        <li>Push to a <strong>public</strong> GitHub repo with <code>sebas.module.json</code> at the root.</li>
+        <li>In your Sebas panel: <code>/modules/marketplace</code>, paste the repo URL (or let search find it), click "Clone and validate".</li>
+        <li>Review the permission diff (none, in this example) and approve.</li>
+        <li>Enable it. Done — the <code>module:dice-roller:roll_dice</code> tool shows up for the AI on the next conversation.</li>
+      </ol>
+
+      <h2>Want something more complete?</h2>
+      <p>The two reference modules cover the other four cases:</p>
+      <ul>
+        <li><a href="https://github.com/victorcarmo2003/sebas-module-changelog-roblox" target="_blank" rel="noopener">sebas-module-changelog-roblox</a> — <code>controller</code> (own panel screen) + <code>cron</code> (periodic polling) + <code>discordCommands</code> + <code>sql</code> + external network + AI.</li>
+        <li><a href="https://github.com/victorcarmo2003/sebas-module-permissions" target="_blank" rel="noopener">sebas-module-permissions</a> — <code>controller</code> + <code>permissionGate</code>, no network or AI.</li>
+      </ul>
+
+      <h2>Quick checklist</h2>
+      <ul>
+        <li>Every relative import ends in <code>.js</code>.</li>
+        <li><code>entryPoints.chronos</code>, not <code>entryPoints.cron</code>.</li>
+        <li><code>selfTest()</code> can only depend on <code>ctx.storage</code>.</li>
+        <li>Every hostname <code>ctx.fetch</code> calls is in <code>permissions.network.domains</code>.</li>
+        <li><code>ctx.ai</code> can be <code>null</code> — always check before <code>.run()</code>.</li>
+        <li><code>"ui"</code> / <code>"aiProvider"</code> / <code>"storage"</code> (as a capability) / <code>"webhook"</code> do nothing — don't rely on them.</li>
+      </ul>
+
+      <div class="footer-nav">
+        <a href="contracts.html">← Contract overview</a>
+        <a href="api/index.html">API Reference →</a>
+      </div>
+    </div>
+  </main>
+
+  <script src="assets/docs.js"></script>
+</body>
+</html>

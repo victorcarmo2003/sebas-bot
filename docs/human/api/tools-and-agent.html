@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sebas Docs — API: Tools &amp; Agent Loop</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/docs.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="dot"></span> Sebas Docs</div>
+    <div class="actions">
+      <button class="btn" id="lang-toggle">PT</button>
+      <a class="btn primary" href="../../ai/" target="_blank" rel="noopener">🤖 <span class="lang-pt">Modo IA</span><span class="lang-en">AI mode</span></a>
+    </div>
+  </header>
+
+  <nav class="sidebar">
+    <h3><span class="lang-pt">Primeiros passos</span><span class="lang-en">Getting started</span></h3>
+    <a class="navlink" href="../index.html"><span class="lang-pt">Introdução</span><span class="lang-en">Introduction</span></a>
+    <a class="navlink" href="../quick-usage.html"><span class="lang-pt">Uso rápido</span><span class="lang-en">Quick usage</span></a>
+    <h3><span class="lang-pt">Contrato de módulo</span><span class="lang-en">Module contract</span></h3>
+    <a class="navlink" href="../contracts.html"><span class="lang-pt">Visão geral do contrato</span><span class="lang-en">Contract overview</span></a>
+    <a class="navlink" href="../creating-a-module.html"><span class="lang-pt">Criando um módulo</span><span class="lang-en">Creating a module</span></a>
+    <h3><span class="lang-pt">Referência de API</span><span class="lang-en">API reference</span></h3>
+    <a class="navlink" href="index.html"><span class="lang-pt">Visão geral</span><span class="lang-en">Overview</span></a>
+    <a class="navlink" href="manifest.html">1. Manifest</a>
+    <a class="navlink" href="module-sdk.html">2. Module SDK</a>
+    <a class="navlink" href="capabilities.html">3. Capabilities</a>
+    <a class="navlink" href="tools-and-agent.html">4. Tools &amp; Agent Loop</a>
+    <a class="navlink" href="permissions.html">5. Permissions &amp; Grants</a>
+    <a class="navlink" href="admin-api.html">6. Admin API</a>
+  </nav>
+
+  <main class="content">
+    <div class="lang-pt">
+      <h1>4. Tools &amp; Agent Loop</h1>
+      <p class="lede">Como a tool do seu módulo chega até o modelo de IA e volta.</p>
+
+      <h2>O caminho de uma tool call</h2>
+      <ol>
+        <li>Cada módulo com capability <code>tools</code> expõe uma lista de <code>SebasToolDefinition</code>.</li>
+        <li>O <code>ToolRegistry</code> (core) agrega tools de todos os módulos habilitados, mais skills e servidores MCP externos, sob nomes qualificados: <code>module:&lt;seu-id&gt;:&lt;nome-da-tool&gt;</code>.</li>
+        <li>Quando alguém conversa com o Sebas (DM, menção ou <code>/sebas</code>), o <code>agent-loop</code> manda a mensagem + a lista completa de tools qualificadas pro provedor de IA configurado.</li>
+        <li>Se o modelo decide chamar uma tool, o agent-loop resolve o nome qualificado de volta pro seu módulo via <code>registry.callQualifiedTool(...)</code>, que chama seu <code>callTool(ctx, name, args)</code> com <code>name</code> já <em>sem</em> o prefixo.</li>
+        <li>O resultado volta pro modelo como uma mensagem <code>role: "tool"</code>; o loop repete até o modelo responder texto final (ou até um teto de iterações).</li>
+      </ol>
+
+      <h2>Filtragem por permissão</h2>
+      <p>Se um módulo <code>permissionGate</code> estiver instalado (sessão 3), <code>allowedTools</code> do resultado do gate filtra quais tools qualificadas chegam até o modelo naquela conversa específica — <code>"all"</code> libera tudo, um array restringe à lista, array vazio significa "só conversa, sem ação".</p>
+
+      <h2>Shape de request/result do provedor de IA (nível core)</h2>
+      <pre>interface AiChatRequest {
+  systemPrompt?: string;
+  userPrompt?: string;
+  messages?: AiChatMessage[];   // historico completo — o agent-loop usa isso, ignora userPrompt
+  jsonSchema?: Record&lt;string, unknown&gt;;
+  jsonSchemaName?: string;
+  maxOutputTokens?: number;
+  temperature?: number;
+  tools?: SebasToolDefinition[]; // formato OpenAI-compatible
+}
+interface AiChatResult {
+  ok: boolean;
+  json?: unknown;
+  text?: string;
+  toolCalls?: AiToolCall[];
+  error?: string;
+  providerId: string;
+}</pre>
+      <p>Isso é interno ao core (você não monta isso diretamente ao escrever um módulo) — só é útil saber que existe pra entender por que <code>ctx.ai.run()</code> (a versão simplificada que seu módulo usa, ver <a href="module-sdk.html">sessão 2</a>) tem menos campos: o core preenche o resto.</p>
+
+      <div class="footer-nav">
+        <a href="capabilities.html">← 3. Capabilities</a>
+        <a href="permissions.html">5. Permissions &amp; Grants →</a>
+      </div>
+    </div>
+
+    <div class="lang-en">
+      <h1>4. Tools &amp; Agent Loop</h1>
+      <p class="lede">How your module's tool reaches the AI model and comes back.</p>
+
+      <h2>A tool call's path</h2>
+      <ol>
+        <li>Every module with the <code>tools</code> capability exposes a list of <code>SebasToolDefinition</code>.</li>
+        <li>Core's <code>ToolRegistry</code> aggregates tools from every enabled module, plus skills and external MCP servers, under qualified names: <code>module:&lt;your-id&gt;:&lt;tool-name&gt;</code>.</li>
+        <li>When someone talks to Sebas (DM, mention, or <code>/sebas</code>), the <code>agent-loop</code> sends the message plus the full list of qualified tools to the configured AI provider.</li>
+        <li>If the model decides to call a tool, the agent-loop resolves the qualified name back to your module via <code>registry.callQualifiedTool(...)</code>, which calls your <code>callTool(ctx, name, args)</code> with <code>name</code> already <em>without</em> the prefix.</li>
+        <li>The result goes back to the model as a <code>role: "tool"</code> message; the loop repeats until the model produces a final text answer (or a max-iterations cap is hit).</li>
+      </ol>
+
+      <h2>Permission filtering</h2>
+      <p>If a <code>permissionGate</code> module is installed (section 3), the gate result's <code>allowedTools</code> filters which qualified tools reach the model for that specific conversation — <code>"all"</code> lets everything through, an array restricts to that list, an empty array means "chat only, no actions".</p>
+
+      <h2>Core-level AI provider request/result shape</h2>
+      <pre>interface AiChatRequest {
+  systemPrompt?: string;
+  userPrompt?: string;
+  messages?: AiChatMessage[];   // full history — the agent-loop uses this, ignores userPrompt
+  jsonSchema?: Record&lt;string, unknown&gt;;
+  jsonSchemaName?: string;
+  maxOutputTokens?: number;
+  temperature?: number;
+  tools?: SebasToolDefinition[]; // OpenAI-compatible format
+}
+interface AiChatResult {
+  ok: boolean;
+  json?: unknown;
+  text?: string;
+  toolCalls?: AiToolCall[];
+  error?: string;
+  providerId: string;
+}</pre>
+      <p>This is internal to core (you don't build this directly when writing a module) — useful mainly to understand why <code>ctx.ai.run()</code> (the simplified version your module uses, see <a href="module-sdk.html">section 2</a>) has fewer fields: core fills in the rest.</p>
+
+      <div class="footer-nav">
+        <a href="capabilities.html">← 3. Capabilities</a>
+        <a href="permissions.html">5. Permissions &amp; Grants →</a>
+      </div>
+    </div>
+  </main>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

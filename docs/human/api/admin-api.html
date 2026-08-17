@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sebas Docs — API: Admin API</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="../assets/docs.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="dot"></span> Sebas Docs</div>
+    <div class="actions">
+      <button class="btn" id="lang-toggle">PT</button>
+      <a class="btn primary" href="../../ai/" target="_blank" rel="noopener">🤖 <span class="lang-pt">Modo IA</span><span class="lang-en">AI mode</span></a>
+    </div>
+  </header>
+
+  <nav class="sidebar">
+    <h3><span class="lang-pt">Primeiros passos</span><span class="lang-en">Getting started</span></h3>
+    <a class="navlink" href="../index.html"><span class="lang-pt">Introdução</span><span class="lang-en">Introduction</span></a>
+    <a class="navlink" href="../quick-usage.html"><span class="lang-pt">Uso rápido</span><span class="lang-en">Quick usage</span></a>
+    <h3><span class="lang-pt">Contrato de módulo</span><span class="lang-en">Module contract</span></h3>
+    <a class="navlink" href="../contracts.html"><span class="lang-pt">Visão geral do contrato</span><span class="lang-en">Contract overview</span></a>
+    <a class="navlink" href="../creating-a-module.html"><span class="lang-pt">Criando um módulo</span><span class="lang-en">Creating a module</span></a>
+    <h3><span class="lang-pt">Referência de API</span><span class="lang-en">API reference</span></h3>
+    <a class="navlink" href="index.html"><span class="lang-pt">Visão geral</span><span class="lang-en">Overview</span></a>
+    <a class="navlink" href="manifest.html">1. Manifest</a>
+    <a class="navlink" href="module-sdk.html">2. Module SDK</a>
+    <a class="navlink" href="capabilities.html">3. Capabilities</a>
+    <a class="navlink" href="tools-and-agent.html">4. Tools &amp; Agent Loop</a>
+    <a class="navlink" href="permissions.html">5. Permissions &amp; Grants</a>
+    <a class="navlink" href="admin-api.html">6. Admin API</a>
+  </nav>
+
+  <main class="content">
+    <div class="lang-pt">
+      <h1>6. Admin API</h1>
+      <p class="lede">A REST API que o painel usa pra falar com o core. Só relevante pra você, autor de módulo, se seu módulo tiver <code>controller</code> — é o mesmo mecanismo por trás.</p>
+
+      <h2>Autenticação</h2>
+      <p>Toda rota (prefixo <code>/api/admin</code>) exige dois headers:</p>
+      <pre>authorization: Bearer &lt;ADMIN_API_SECRET&gt;
+x-admin-discord-id: &lt;discord user id de quem esta chamando&gt;</pre>
+      <p>O secret é compartilhado entre core e painel (mesma máquina/confiança); o segundo header identifica o admin pra checagem de escopo (dono vs. subadmin com permissões específicas).</p>
+
+      <h2>Rotas relevantes pra módulos</h2>
+      <table>
+        <tr><th>Rota</th><th>O que faz</th></tr>
+        <tr><td><code>GET /modules/discover?q=</code></td><td>Busca no GitHub por repos com <code>sebas.module.json</code> (code search — precisa de token do GitHub configurado).</td></tr>
+        <tr><td><code>POST /modules/install</code> <code>{repoUrl}</code></td><td>Clona, builda, self-test em sandbox. Ver <a href="../../ai/">seção 9 do modo IA</a> pro fluxo completo.</td></tr>
+        <tr><td><code>GET /modules/:id</code></td><td>Detalhe completo: manifest, state, grants, eventos, diff de permissão pendente.</td></tr>
+        <tr><td><code>POST /modules/:id/approve</code> / <code>/reject</code></td><td>Só dono. Aprova ou rejeita o diff de permissões pedido.</td></tr>
+        <tr><td><code>POST /modules/:id/enable</code> / <code>/disable</code></td><td>Liga/desliga a worker_thread do módulo.</td></tr>
+        <tr><td><code>POST /modules/:id/check-update</code> / <code>/update</code></td><td>Compara HEAD local vs. remoto (git ls-remote), aplica se pedido.</td></tr>
+        <tr><td><code>ALL /modules/:id/controller/*</code></td><td>Encaminha pro <code>handleRequest</code> do seu módulo — <code>req.path</code> chega sem esse prefixo.</td></tr>
+      </table>
+
+      <div class="callout">Não existe um SDK/cliente publicado pra essa API — o painel (<code>packages/panel/src/lib/worker-api.ts</code>) é a implementação de referência de como chamar cada rota.</div>
+
+      <div class="footer-nav">
+        <a href="permissions.html">← 5. Permissions &amp; Grants</a>
+        <a href="../creating-a-module.html"><span class="lang-pt">Criando um módulo</span> →</a>
+      </div>
+    </div>
+
+    <div class="lang-en">
+      <h1>6. Admin API</h1>
+      <p class="lede">The REST API the panel uses to talk to core. Only relevant to you, as a module author, if your module has a <code>controller</code> — it's the same mechanism underneath.</p>
+
+      <h2>Authentication</h2>
+      <p>Every route (under the <code>/api/admin</code> prefix) requires two headers:</p>
+      <pre>authorization: Bearer &lt;ADMIN_API_SECRET&gt;
+x-admin-discord-id: &lt;discord user id of the caller&gt;</pre>
+      <p>The secret is shared between core and panel (same machine/trust boundary); the second header identifies the admin for scope checking (owner vs. subadmin with specific permissions).</p>
+
+      <h2>Routes relevant to modules</h2>
+      <table>
+        <tr><th>Route</th><th>What it does</th></tr>
+        <tr><td><code>GET /modules/discover?q=</code></td><td>Searches GitHub for repos with a <code>sebas.module.json</code> (code search — needs a GitHub token configured).</td></tr>
+        <tr><td><code>POST /modules/install</code> <code>{repoUrl}</code></td><td>Clones, builds, sandboxed self-test. See <a href="../../ai/">AI mode section 9</a> for the full flow.</td></tr>
+        <tr><td><code>GET /modules/:id</code></td><td>Full detail: manifest, state, grants, events, pending permission diff.</td></tr>
+        <tr><td><code>POST /modules/:id/approve</code> / <code>/reject</code></td><td>Owner-only. Approves or rejects the requested permission diff.</td></tr>
+        <tr><td><code>POST /modules/:id/enable</code> / <code>/disable</code></td><td>Starts/stops the module's worker_thread.</td></tr>
+        <tr><td><code>POST /modules/:id/check-update</code> / <code>/update</code></td><td>Compares local vs. remote HEAD (git ls-remote), applies if requested.</td></tr>
+        <tr><td><code>ALL /modules/:id/controller/*</code></td><td>Forwards to your module's <code>handleRequest</code> — <code>req.path</code> arrives stripped of this prefix.</td></tr>
+      </table>
+
+      <div class="callout">There's no published SDK/client for this API — the panel (<code>packages/panel/src/lib/worker-api.ts</code>) is the reference implementation of how to call every route.</div>
+
+      <div class="footer-nav">
+        <a href="permissions.html">← 5. Permissions &amp; Grants</a>
+        <a href="../creating-a-module.html">Creating a module →</a>
+      </div>
+    </div>
+  </main>
+
+  <script src="../assets/docs.js"></script>
+</body>
+</html>

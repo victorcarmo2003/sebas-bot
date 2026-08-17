@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sebas Docs — Introduction</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="assets/docs.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="dot"></span> Sebas Docs</div>
+    <div class="actions">
+      <button class="btn" id="lang-toggle">PT</button>
+      <a class="btn primary" href="../ai/" target="_blank" rel="noopener">🤖 <span class="lang-pt">Modo IA</span><span class="lang-en">AI mode</span></a>
+    </div>
+  </header>
+
+  <nav class="sidebar">
+    <h3><span class="lang-pt">Primeiros passos</span><span class="lang-en">Getting started</span></h3>
+    <a class="navlink" href="index.html"><span class="lang-pt">Introdução</span><span class="lang-en">Introduction</span></a>
+    <a class="navlink" href="quick-usage.html"><span class="lang-pt">Uso rápido</span><span class="lang-en">Quick usage</span></a>
+
+    <h3><span class="lang-pt">Contrato de módulo</span><span class="lang-en">Module contract</span></h3>
+    <a class="navlink" href="contracts.html"><span class="lang-pt">Visão geral do contrato</span><span class="lang-en">Contract overview</span></a>
+    <a class="navlink" href="creating-a-module.html"><span class="lang-pt">Criando um módulo</span><span class="lang-en">Creating a module</span></a>
+
+    <h3><span class="lang-pt">Referência de API</span><span class="lang-en">API reference</span></h3>
+    <a class="navlink" href="api/index.html"><span class="lang-pt">Visão geral</span><span class="lang-en">Overview</span></a>
+    <a class="navlink" href="api/manifest.html">1. Manifest</a>
+    <a class="navlink" href="api/module-sdk.html">2. Module SDK</a>
+    <a class="navlink" href="api/capabilities.html">3. Capabilities</a>
+    <a class="navlink" href="api/tools-and-agent.html">4. <span class="lang-pt">Tools &amp; Agent Loop</span><span class="lang-en">Tools &amp; Agent Loop</span></a>
+    <a class="navlink" href="api/permissions.html">5. <span class="lang-pt">Permissões &amp; Grants</span><span class="lang-en">Permissions &amp; Grants</span></a>
+    <a class="navlink" href="api/admin-api.html">6. Admin API</a>
+  </nav>
+
+  <main class="content">
+    <div class="lang-pt">
+      <h1>Sebas</h1>
+      <p class="lede">Plataforma de bot Discord modular. Este site documenta como usar o Sebas e, principalmente, como construir módulos de terceiro pra ele.</p>
+
+      <h2>O que é</h2>
+      <p>Sebas é um bot Discord dividido em três partes (monorepo npm workspaces):</p>
+      <div class="grid-cards">
+        <div class="card"><h4>core</h4><p>Processo Node/TypeScript. Recebe interactions do Discord, expõe uma admin API REST, roda os módulos em worker_threads isoladas.</p></div>
+        <div class="card"><h4>panel</h4><p>Dashboard Next.js. Fala com o core via HTTP (secret Bearer + header de identidade do admin).</p></div>
+        <div class="card"><h4>módulos</h4><p>Unidades isoladas de funcionalidade — in-tree (embutidos) ou instalados dinamicamente via marketplace, sempre a partir de um repositório git próprio.</p></div>
+      </div>
+
+      <h2>Dois módulos de referência, ambos públicos</h2>
+      <p>Servem tanto como funcionalidade real do bot quanto como exemplo completo de como escrever um módulo:</p>
+      <ul>
+        <li><code>sebas-module-changelog-roblox</code> — monitora RSS, formata com IA, posta no Discord. Usa <code>controller</code> + <code>cron</code> + <code>discordCommands</code>.</li>
+        <li><code>sebas-module-permissions</code> — controla quem pode falar com o bot (DM/menção/ação). Usa <code>controller</code> + <code>permissionGate</code>.</li>
+      </ul>
+      <div class="callout">Ambos os repositórios estão linkados na página <a href="creating-a-module.html">Criando um módulo</a> e em cada seção relevante da API.</div>
+
+      <h2>Por onde começar</h2>
+      <p>Se você vai só usar o painel administrativo do seu Sebas: veja <a href="quick-usage.html">Uso rápido</a>. Se você vai escrever um módulo novo (à mão ou com ajuda de uma IA): leia <a href="contracts.html">Visão geral do contrato</a> e depois <a href="creating-a-module.html">Criando um módulo</a> — a Referência de API fica pra consulta durante o desenvolvimento, não precisa ler tudo antes de começar.</p>
+
+      <div class="footer-nav">
+        <span></span>
+        <a href="quick-usage.html">Uso rápido →</a>
+      </div>
+    </div>
+
+    <div class="lang-en">
+      <h1>Sebas</h1>
+      <p class="lede">A modular Discord bot platform. This site documents how to use Sebas and, mainly, how to build third-party modules for it.</p>
+
+      <h2>What it is</h2>
+      <p>Sebas is a Discord bot split into three parts (npm workspaces monorepo):</p>
+      <div class="grid-cards">
+        <div class="card"><h4>core</h4><p>Node/TypeScript process. Receives Discord interactions, exposes a REST admin API, runs modules in isolated worker_threads.</p></div>
+        <div class="card"><h4>panel</h4><p>Next.js dashboard. Talks to core over HTTP (Bearer secret + an admin identity header).</p></div>
+        <div class="card"><h4>modules</h4><p>Isolated units of functionality — in-tree (bundled) or dynamically installed via the marketplace, always from their own git repository.</p></div>
+      </div>
+
+      <h2>Two reference modules, both public</h2>
+      <p>They serve both as real bot functionality and as a complete example of how to write a module:</p>
+      <ul>
+        <li><code>sebas-module-changelog-roblox</code> — monitors an RSS feed, formats with AI, posts to Discord. Uses <code>controller</code> + <code>cron</code> + <code>discordCommands</code>.</li>
+        <li><code>sebas-module-permissions</code> — controls who can talk to the bot (DM/mention/action). Uses <code>controller</code> + <code>permissionGate</code>.</li>
+      </ul>
+      <div class="callout">Both repositories are linked on the <a href="creating-a-module.html">Creating a module</a> page and in each relevant API section.</div>
+
+      <h2>Where to start</h2>
+      <p>If you're just going to use your Sebas's admin panel: see <a href="quick-usage.html">Quick usage</a>. If you're writing a new module (by hand or with an AI's help): read <a href="contracts.html">Contract overview</a> then <a href="creating-a-module.html">Creating a module</a> — the API Reference is for lookup while you build, not required reading up front.</p>
+
+      <div class="footer-nav">
+        <span></span>
+        <a href="quick-usage.html">Quick usage →</a>
+      </div>
+    </div>
+  </main>
+
+  <script src="assets/docs.js"></script>
+</body>
+</html>
